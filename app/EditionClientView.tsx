@@ -34,6 +34,12 @@ interface EditionData {
   number: number;
   isArchived?: boolean;
   threeThings: string[];
+  personalization: {
+    changes: Array<{ topic: string; displayName: string; delta: number; likes: number; skips: number }>;
+    explanation: string;
+    storyReasons: Record<string, string>;
+  } | null;
+  feedback?: { likedArticles: Record<string, boolean>; skippedArticles: Record<string, boolean> };
   layout: {
     lead: ArticleItem | null;
     secondary: ArticleItem[];
@@ -66,11 +72,12 @@ export default function EditionClientView({
   isArchived?: boolean;
 }) {
   const router = useRouter();
-  const [likedArticles, setLikedArticles] = useState<Record<string, boolean>>({});
-  const [skippedArticles, setSkippedArticles] = useState<Record<string, boolean>>({});
+  const [likedArticles, setLikedArticles] = useState<Record<string, boolean>>(() => edition.feedback?.likedArticles || {});
+  const [skippedArticles, setSkippedArticles] = useState<Record<string, boolean>>(() => edition.feedback?.skippedArticles || {});
   const [interests, setInterests] = useState(user.interests);
   const [regenerating, setRegenerating] = useState(false);
   const [regenerateError, setRegenerateError] = useState("");
+  const [feedbackError, setFeedbackError] = useState("");
   const [deletingData, setDeletingData] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const pendingFeedbackRef = useRef<Promise<void> | null>(null);
@@ -82,13 +89,7 @@ export default function EditionClientView({
 
   // Send interaction event to /api/event and update interest weights in real time
   const handleEvent = useCallback(async (articleId: string, type: "like" | "skip" | "click" | "read") => {
-    if (type === "like") {
-      setLikedArticles((prev) => ({ ...prev, [articleId]: true }));
-      setSkippedArticles((prev) => ({ ...prev, [articleId]: false }));
-    } else if (type === "skip") {
-      setSkippedArticles((prev) => ({ ...prev, [articleId]: true }));
-      setLikedArticles((prev) => ({ ...prev, [articleId]: false }));
-    }
+    setFeedbackError("");
 
     const previousRequest = pendingFeedbackRef.current;
     const request = (async () => {
@@ -97,11 +98,21 @@ export default function EditionClientView({
         const res = await fetch("/api/event", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ articleId, editionId: edition.id, type }),
+          body: JSON.stringify({ articleId, editionId: edition.id, readerId: user.id, type }),
           keepalive: type === "click" || type === "read",
         });
         const data = await res.json();
-        if (data.success && data.topic && typeof data.weight === "number") {
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "Could not save your feedback. Please try again.");
+        }
+        if (type === "like") {
+          setLikedArticles((prev) => ({ ...prev, [articleId]: true }));
+          setSkippedArticles((prev) => ({ ...prev, [articleId]: false }));
+        } else if (type === "skip") {
+          setSkippedArticles((prev) => ({ ...prev, [articleId]: true }));
+          setLikedArticles((prev) => ({ ...prev, [articleId]: false }));
+        }
+        if (data.topic && typeof data.weight === "number") {
           setInterests((prev) =>
             [
               ...prev.filter((item) => item.topic !== data.topic),
@@ -113,6 +124,7 @@ export default function EditionClientView({
         }
       } catch (err) {
         console.warn("Event logging failed:", err);
+        setFeedbackError(err instanceof Error ? err.message : "Could not save your feedback. Please try again.");
       }
     })();
     pendingFeedbackRef.current = request;
@@ -121,7 +133,7 @@ export default function EditionClientView({
     } finally {
       if (pendingFeedbackRef.current === request) pendingFeedbackRef.current = null;
     }
-  }, [edition.id]);
+  }, [edition.id, user.id]);
 
   const handleArticleOpen = (articleId: string) => {
     void handleEvent(articleId, "click");
@@ -171,7 +183,11 @@ export default function EditionClientView({
     setRegenerateError("");
     try {
       await pendingFeedbackRef.current?.catch(() => undefined);
-      const res = await fetch("/api/edition/regenerate", { method: "POST" });
+      const res = await fetch("/api/edition/regenerate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ editionId: edition.id }),
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "Could not refresh your articles. Please try again.");
@@ -210,6 +226,8 @@ export default function EditionClientView({
   const briefs = edition.layout.briefs;
   const echo = edition.layout.echo;
   const totalArticles = (lead ? 1 : 0) + secondary.length + briefs.length + echo.length;
+  const articleReason = (article: ArticleItem) =>
+    edition.personalization?.storyReasons[article._id] || `A fresh ${formatTopicName(article.topic)} story selected for you`;
 
   return (
     <div className="echo-document min-h-screen bg-[#f5f0e6] text-[#1a1917] font-sans selection:bg-[#c0152f] selection:text-white pb-16">
@@ -271,11 +289,16 @@ export default function EditionClientView({
         </div>
       </header>
 
-      {!isArchived && <NewsStoryRail />}
+      {!isArchived && <NewsStoryRail readerId={user.id} />}
 
       {regenerateError && (
         <p role="alert" className="mx-auto max-w-[1340px] px-6 pt-3 text-sm text-[#a31126] print:hidden">
           {regenerateError}
+        </p>
+      )}
+      {feedbackError && (
+        <p role="alert" className="mx-auto max-w-[1340px] px-4 sm:px-6 md:px-12 pt-3 text-sm text-[#a31126] print:hidden">
+          {feedbackError}
         </p>
       )}
       {deleteError && (
@@ -328,6 +351,31 @@ export default function EditionClientView({
           </span>
         </div>
 
+        {!isArchived && edition.personalization ? (
+          <section aria-labelledby="personalization-heading" className="mb-7 border border-[#ded7cb] bg-[#fcfaf7] px-4 py-4 sm:px-6 sm:py-5">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-[9px] font-bold tracking-[0.16em] text-[#c0152f] uppercase">Your feedback, reflected</p>
+                <h2 id="personalization-heading" className="mt-1 font-serif text-[22px] text-[#1a1917]">What Echo learned from you</h2>
+              </div>
+              {edition.personalization.changes.length ? (
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-[12px] font-medium text-[#716c64]">
+                  {edition.personalization.changes.map((change) => (
+                    <span key={change.topic} className={change.delta > 0 ? "text-[#34704d]" : "text-[#a31126]"}>
+                      {change.displayName} {change.delta > 0 ? "↑" : "↓"} {Math.abs(change.delta)}%
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <span className="text-[12px] text-[#716c64]">No measurable shifts yet</span>
+              )}
+            </div>
+            <p className="mt-3 text-[13px] leading-relaxed text-[#555049]">
+              {edition.personalization.changes.length ? `“${edition.personalization.explanation}”` : edition.personalization.explanation}
+            </p>
+          </section>
+        ) : null}
+
         {/* "Today in 3 Things" Key Takeaways Section */}
         {edition.threeThings && edition.threeThings.length >= 3 && (
           <section className="bg-[#eee8dc] border border-[#ded7cb] rounded-[2px] p-4 sm:p-6 mb-8 sm:mb-10">
@@ -369,7 +417,7 @@ export default function EditionClientView({
                     THE BIG READ / {formatTopicName(lead.topic).toUpperCase()}
                   </span>
                   <span className="font-serif italic text-[#716c64]">
-                    Selected for your curious mind
+                    {articleReason(lead)}
                   </span>
                 </div>
 
@@ -408,7 +456,7 @@ export default function EditionClientView({
                     <span>{formatTimeAgo(lead.publishedAt)}</span>
                     <span>·</span>
                     <span className="text-[#c0152f] font-medium">
-                      Because you like {formatTopicName(lead.topic)}
+                      {articleReason(lead)}
                     </span>
                   </div>
 
@@ -506,7 +554,7 @@ export default function EditionClientView({
                           </span>
                         </div>
                         <div className="text-[11px] text-[#c0152f] font-medium mb-3">
-                          Because you like {formatTopicName(art.topic)}
+                          {articleReason(art)}
                         </div>
 
                         <div className="echo-actions flex flex-wrap items-center gap-2 text-[11px]">
@@ -624,7 +672,7 @@ export default function EditionClientView({
                         {b.source} · {formatTimeAgo(b.publishedAt)}
                       </div>
                       <div className="text-[11px] text-[#c0152f] font-medium mb-2.5">
-                        Because you like {formatTopicName(b.topic)}
+                        {articleReason(b)}
                       </div>
                       <ArticleSummary article={b} className="mb-4" />
 
@@ -742,7 +790,7 @@ export default function EditionClientView({
                       {eArt.source} · {formatTimeAgo(eArt.publishedAt)}
                     </div>
                     <div className="text-[12px] text-[#c0152f] font-medium mb-3">
-                      Outside your interests · A different point of view
+                      {articleReason(eArt)} · A different point of view
                     </div>
 
                     <div className="echo-actions flex flex-wrap items-center gap-2 text-[12px]">

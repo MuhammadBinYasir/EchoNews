@@ -73,6 +73,17 @@ const EditionSchema = new Schema(
         },
         recentArticleIds: { type: [{ type: Schema.Types.ObjectId, ref: "Article" }], default: [] },
         threeThings: { type: [String], default: [] },
+        interestSnapshot: { type: Map, of: Number, default: {} },
+        personalization: {
+            changes: [{
+                topic: { type: String, enum: TOPICS, required: true },
+                delta: { type: Number, required: true },
+                likes: { type: Number, default: 0 },
+                skips: { type: Number, default: 0 },
+            }],
+            explanation: { type: String, default: "" },
+            storyReasons: { type: Map, of: String, default: {} },
+        },
         createdAt: { type: Date, default: Date.now },
     },
     { versionKey: false }

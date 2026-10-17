@@ -12,9 +12,10 @@ interface NewsStory {
   image: string;
   url: string;
   publishedAt: string;
+  feedback?: "like" | "skip" | null;
 }
 
-export default function NewsStoryRail() {
+export default function NewsStoryRail({ readerId }: { readerId: string }) {
   const [stories, setStories] = useState<NewsStory[]>([]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -25,11 +26,21 @@ export default function NewsStoryRail() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/stories", { cache: "no-store" })
+    fetch(`/api/stories?readerId=${encodeURIComponent(readerId)}`, { cache: "no-store" })
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Could not load stories.");
-        if (!cancelled) setStories(data.stories || []);
+        if (!cancelled) {
+          const loadedStories = (data.stories || []) as NewsStory[];
+          setStories(loadedStories);
+          const savedFeedback: Record<string, "like" | "skip"> = {};
+          for (const story of loadedStories) {
+            if (story.feedback === "like" || story.feedback === "skip") {
+              savedFeedback[story.id] = story.feedback;
+            }
+          }
+          setFeedback(savedFeedback);
+        }
       })
       .catch((loadError: unknown) => {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Could not load stories.");
@@ -39,7 +50,7 @@ export default function NewsStoryRail() {
       });
 
     return () => { cancelled = true; };
-  }, []);
+  }, [readerId]);
 
   useEffect(() => {
     if (activeIndex === null) return;
@@ -57,7 +68,7 @@ export default function NewsStoryRail() {
       const res = await fetch("/api/event", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ articleId: story.id, type }),
+        body: JSON.stringify({ articleId: story.id, type, readerId }),
       });
       if (!res.ok) throw new Error("Feedback request failed");
       setFeedbackError("");
@@ -67,7 +78,7 @@ export default function NewsStoryRail() {
     } catch {
       setFeedbackError("Could not save your feedback. Please try again.");
     }
-  }, []);
+  }, [readerId]);
 
   const handleStoryOpen = (story: NewsStory) => {
     void sendFeedback(story, "click");

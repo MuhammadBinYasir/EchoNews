@@ -1,21 +1,26 @@
-import { connection, NextResponse } from "next/server";
+import { connection, NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/mongo";
-import { Article, TOPICS, User } from "@/model";
+import { Article, Event, TOPICS, User } from "@/model";
 import { extractInterestsMap } from "@/lib/format";
 import { rankArticlesByPreference } from "@/lib/recommendation";
+import { getReaderIdCandidates } from "@/lib/reader-cookies";
 
 const STORY_WINDOW_DAYS = 7;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   await connection();
   try {
     const cookieStore = await cookies();
-    const userId =
-      cookieStore.get("echo_user_id")?.value || cookieStore.get("userId")?.value;
+    const userIds = getReaderIdCandidates(
+      cookieStore.get("echo_user_id")?.value,
+      cookieStore.get("userId")?.value,
+    );
+    const requestedReaderId = request.nextUrl.searchParams.get("readerId");
+    const userId = requestedReaderId || userIds[0];
 
-    if (!userId || !mongoose.isValidObjectId(userId)) {
+    if (!userId || !mongoose.isValidObjectId(userId) || !userIds.includes(userId)) {
       return NextResponse.json({ error: "Reader profile not found." }, { status: 401 });
     }
 
@@ -54,6 +59,18 @@ export async function GET() {
       return topStory ? [topStory] : [];
     });
 
+    const storyIds = stories.map((article) => article._id);
+    const savedFeedback = await Event.find({
+      userId,
+      articleId: { $in: storyIds },
+      editionId: { $exists: false },
+      origin: { $ne: "onboarding" },
+      type: { $in: ["like", "skip"] },
+    })
+      .select("articleId type")
+      .lean();
+    const feedbackByArticle = new Map(savedFeedback.map((event) => [String(event.articleId), event.type]));
+
     return NextResponse.json({
       stories: stories.map((article) => ({
         id: article._id.toString(),
@@ -64,6 +81,7 @@ export async function GET() {
         image: article.image || "",
         url: article.url,
         publishedAt: article.publishedAt,
+        feedback: feedbackByArticle.get(article._id.toString()) || null,
       })),
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
