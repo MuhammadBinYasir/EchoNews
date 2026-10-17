@@ -65,13 +65,14 @@ input:focus {
 
 @page {
   size: A4 portrait;
-  margin: 13mm;
+  margin: 0;
 }
 
 @media print {
   html,
   body {
-    background: #fff !important;
+    background: #f5f0e6 !important;
+    background-color: #f5f0e6 !important;
     color: #1a1917 !important;
     print-color-adjust: exact;
     -webkit-print-color-adjust: exact;
@@ -80,28 +81,63 @@ input:focus {
   body {
     display: block !important;
     font-size: 10pt;
+    margin: 0 !important;
   }
 
   .echo-document {
     min-height: 0 !important;
     padding-bottom: 0 !important;
+    width: 100% !important;
+    background: #f5f0e6 !important;
+  }
+
+  .echo-document::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: #f5f0e6 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
   }
 
   .echo-paper {
     width: 100% !important;
     max-width: none !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding: 12mm 14mm !important;
+    box-sizing: border-box !important;
+    background: #f5f0e6 !important;
   }
 
   .echo-print-grid {
     display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
   }
 
   .echo-print-grid > * {
     width: 100% !important;
+    display: block !important;
+    flex: none !important;
     padding: 0 !important;
     margin: 0 0 0.25in !important;
+  }
+
+  .echo-paper section,
+  .echo-paper article,
+  .echo-paper .echo-print-grid,
+  .echo-paper .echo-print-grid > * {
+    visibility: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    content-visibility: visible !important;
+  }
+
+  .echo-paper .flex {
+    display: block !important;
   }
 
   .echo-paper .grid {

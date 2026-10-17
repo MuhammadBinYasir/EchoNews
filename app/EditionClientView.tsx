@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import Link from "next/link";
 import { formatTimeAgo, formatTopicName } from "@/lib/format";
 
@@ -67,6 +67,8 @@ export default function EditionClientView({
   const [skippedArticles, setSkippedArticles] = useState<Record<string, boolean>>({});
   const [interests, setInterests] = useState(user.interests);
   const [regenerating, setRegenerating] = useState(false);
+  const [regenerateError, setRegenerateError] = useState("");
+  const pendingFeedbackRef = useRef<Promise<void> | null>(null);
 
   // Send interaction event to /api/event and update interest weights in real time
   const handleEvent = async (articleId: string, type: "like" | "skip" | "click") => {
@@ -78,43 +80,52 @@ export default function EditionClientView({
       setLikedArticles((prev) => ({ ...prev, [articleId]: false }));
     }
 
-    try {
-      const res = await fetch("/api/event", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          articleId,
-          editionId: edition.id,
-          type,
-        }),
-        keepalive: type === "click",
-      });
-
-      const data = await res.json();
-      if (data.success && data.topic && typeof data.weight === "number") {
-        setInterests((prev) =>
-          [
-            ...prev.filter((item) => item.topic !== data.topic),
-            { topic: data.topic, displayName: formatTopicName(data.topic), weight: data.weight },
-          ]
-            .sort((a, b) => b.weight - a.weight)
-            .slice(0, 6)
-        );
+    const previousRequest = pendingFeedbackRef.current;
+    const request = (async () => {
+      if (previousRequest) await previousRequest.catch(() => undefined);
+      try {
+        const res = await fetch("/api/event", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ articleId, editionId: edition.id, type }),
+          keepalive: type === "click",
+        });
+        const data = await res.json();
+        if (data.success && data.topic && typeof data.weight === "number") {
+          setInterests((prev) =>
+            [
+              ...prev.filter((item) => item.topic !== data.topic),
+              { topic: data.topic, displayName: formatTopicName(data.topic), weight: data.weight },
+            ]
+              .sort((a, b) => b.weight - a.weight)
+              .slice(0, 6)
+          );
+        }
+      } catch (err) {
+        console.warn("Event logging failed:", err);
       }
-    } catch (err) {
-      console.warn("Event logging failed:", err);
+    })();
+    pendingFeedbackRef.current = request;
+    try {
+      await request;
+    } finally {
+      if (pendingFeedbackRef.current === request) pendingFeedbackRef.current = null;
     }
   };
 
   const handleRegenerate = async () => {
     setRegenerating(true);
+    setRegenerateError("");
     try {
+      await pendingFeedbackRef.current?.catch(() => undefined);
       const res = await fetch("/api/edition/regenerate", { method: "POST" });
-      if (res.ok) {
-        window.location.reload();
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Could not refresh your articles. Please try again.");
       }
-    } catch {
       window.location.reload();
+    } catch (error) {
+      setRegenerateError(error instanceof Error ? error.message : "Could not refresh your articles.");
     } finally {
       setRegenerating(false);
     }
@@ -158,6 +169,12 @@ export default function EditionClientView({
           </div>
         </div>
       </header>
+
+      {regenerateError && (
+        <p role="alert" className="mx-auto max-w-[1340px] px-6 pt-3 text-sm text-[#a31126] print:hidden">
+          {regenerateError}
+        </p>
+      )}
 
       {/* Newspaper Container */}
       <main className="echo-paper max-w-[1340px] mx-auto px-6 md:px-12 pt-8">

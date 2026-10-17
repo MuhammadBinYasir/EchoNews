@@ -70,6 +70,7 @@ const EditionSchema = new Schema(
             briefs: [{ type: Schema.Types.ObjectId, ref: "Article" }],
             echo: [{ type: Schema.Types.ObjectId, ref: "Article" }], // "Break the Echo"
         },
+        recentArticleIds: { type: [{ type: Schema.Types.ObjectId, ref: "Article" }], default: [] },
         threeThings: { type: [String], default: [] },
         createdAt: { type: Date, default: Date.now },
     },

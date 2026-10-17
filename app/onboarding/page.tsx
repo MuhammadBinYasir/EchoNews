@@ -204,6 +204,7 @@ const OnboardingPage = () => {
   const [seenArticleIds, setSeenArticleIds] = useState<string[]>([]);
   const [likedArticleIds, setLikedArticleIds] = useState<string[]>([]);
   const [dislikedArticleIds, setDislikedArticleIds] = useState<string[]>([]);
+  const [rotationSeed, setRotationSeed] = useState("");
   const [articlesLoading, setArticlesLoading] = useState(false);
 
   // Submission & UI status
@@ -235,7 +236,8 @@ const OnboardingPage = () => {
   const fetchNextArticle = async (
     currentSeen: string[],
     currentLikes: string[],
-    currentDislikes: string[]
+    currentDislikes: string[],
+    currentSeed = rotationSeed
   ) => {
     setArticlesLoading(true);
     try {
@@ -247,6 +249,7 @@ const OnboardingPage = () => {
           seenIds: currentSeen,
           likedIds: currentLikes,
           dislikedIds: currentDislikes,
+          rotationSeed: currentSeed,
         }),
       });
 
@@ -256,6 +259,7 @@ const OnboardingPage = () => {
       }
 
       if (data.article) {
+        if (data.rotationSeed) setRotationSeed(data.rotationSeed);
         setCurrentArticle(data.article);
       } else {
         // No more candidates, finish onboarding
@@ -288,9 +292,10 @@ const OnboardingPage = () => {
     setSeenArticleIds([]);
     setLikedArticleIds([]);
     setDislikedArticleIds([]);
+    setRotationSeed("");
     setStep(2);
 
-    await fetchNextArticle([], [], []);
+    await fetchNextArticle([], [], [], "");
   };
 
   // Submit all state in one final single request (weights: 0.7 selected, 0.2 others, +0.15 per liked article)
