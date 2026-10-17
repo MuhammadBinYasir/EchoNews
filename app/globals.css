@@ -64,8 +64,8 @@ input:focus {
 }
 
 @page {
-  size: letter portrait;
-  margin: 0.55in;
+  size: A4 portrait;
+  margin: 13mm;
 }
 
 @media print {
@@ -80,6 +80,11 @@ input:focus {
   body {
     display: block !important;
     font-size: 10pt;
+  }
+
+  .echo-document {
+    min-height: 0 !important;
+    padding-bottom: 0 !important;
   }
 
   .echo-paper {
@@ -99,20 +104,48 @@ input:focus {
     margin: 0 0 0.25in !important;
   }
 
+  .echo-paper .grid {
+    display: block !important;
+  }
+
+  .echo-paper .grid > * {
+    width: 100% !important;
+  }
+
   .echo-actions,
   button,
   header.print\:hidden {
     display: none !important;
   }
 
-  article,
-  section {
+  article {
     break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  section {
+    break-inside: auto;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    break-after: avoid-page;
+    page-break-after: avoid;
   }
 
   img {
-    max-height: 3.2in;
+    width: 100% !important;
+    height: auto !important;
+    max-height: 2.7in;
     object-fit: cover;
+  }
+
+  .echo-paper [class*="aspect-"] {
+    height: auto !important;
+    aspect-ratio: auto !important;
+    overflow: visible !important;
   }
 
   a {

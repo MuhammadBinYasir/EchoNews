@@ -100,19 +100,17 @@ export async function getNextOnboardingArticle(
   const candidates = await Article.find({
     _id: { $nin: state.seenIds },
     topic: { $in: targetTopics },
-    image: { $exists: true, $ne: null, $nin: ["", null] },
-    snippet: { $exists: true, $ne: "" },
   })
     .sort({ publishedAt: -1 })
-    .limit(20)
+    .limit(40)
     .lean();
 
   if (candidates.length === 0) {
-    // If target exhausted, broaden query to any unseen article with an image
+    // If the preferred pool is empty, use another available story without
+    // requiring an image or excerpt; both are optional in the reader.
     const fallback = await Article.findOne({
       _id: { $nin: state.seenIds },
-      image: { $exists: true, $ne: null, $nin: ["", null] },
-    }).lean();
+    }).sort({ publishedAt: -1 }).lean();
 
     if (!fallback) return null;
 

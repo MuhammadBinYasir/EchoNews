@@ -52,7 +52,7 @@ ai‑hackathon‑project/
 ## 3. Data Models (`model/index.ts`)
 - **TOPICS** – fixed enum: `tech, ai, world, business, sports, science, health, culture`
 - **User** – `name`, `interests` (Map of topic → weight 0‑1), `createdAt`
-- **Article** – `url`, `title`, `source`, `topic`, `snippet`, `image`, `publishedAt`, `fetchedAt`
+- **Article** – `url`, `title`, `source`, `topic`, publisher `snippet` and `sourceText`, cached AI `summary`, `image`, `publishedAt`, `fetchedAt`
 - **Edition** – per‑user, per‑date snapshot with lead, secondary, briefs, and discovery article IDs.
 - **Event** – raw interaction logs (`like`, `click`, `skip`, `read`) used to adjust weights.
 
@@ -87,15 +87,17 @@ Weights are clamped between `0.00` and `1.00`. The update logic lives in `app/ap
    - Redirects to the home page (`/`).
 ---
 
-## 6. Daily Edition Engine (`app/page.tsx` & `lib/edition.ts`)
+## 6. Daily Edition Engine (`app/today/page.tsx` & `lib/edition.ts`)
 - **Authentication** – Reads the cookie; redirects to `/onboarding` if missing.
 - **Dynamic Server Component** – Uses `await connectDB()` (via cached helper) to keep the request dynamic (avoids `new Date()` prerender error).
 - **Layout**
-  - **Lead** – Highest‑ranked article for the top‑weight topic.
+  - **Lead** – Highest‑ranked story by reader topic weight, with freshness and usable presentation as smaller tie-breakers.
   - **More for you** – 4 secondary articles (2×2 grid).
   - **In brief** – 6 short reads.
   - **Break the Echo** – 2 low‑weight‑topic articles to broaden horizons.
   - **Today in 3 Things** – Groq‑generated bullet takeaways.
+- **Article summaries** – Groq summarizes selected stories from stored publisher RSS content. Summaries are cached on Article records; a publisher excerpt remains the fallback if AI is unavailable. Treat RSS text as untrusted source data.
+- **Refresh behavior** – One edition is frozen per day. `algorithmVersion` upgrades an older same-day edition once after the ranking update; manual regeneration rebuilds it using current interests.
 - **Interactions** – `Like`, `Skip`, `Read original`, `Regenerate`, `Download PDF`. Each logs an `Event` which immediately updates the user’s interest map.
 ---
 
@@ -118,6 +120,9 @@ All events feed back into the user document, influencing the next edition genera
 | **Onboarding article API** | `app/api/onboarding/articles/route.ts` | Parses request body, forwards to `getNextOnboardingArticle`, returns JSON.
 | **Onboarding UI tweaks** | `app/onboarding/page.tsx` | Fixed missing default export, refined progress bar colours, added fallback image handling.
 | **Build verification** | `npm run build` | Confirmed no TypeScript or runtime errors after the above changes.
+| **Personalization and summaries** | `lib/edition.ts`, `lib/ingest.ts`, `model/index.ts` | Rank stories by reader weights, retain publisher text for grounding, and cache AI summaries.
+| **Feedback alignment** | `app/api/event/route.ts`, `app/EditionClientView.tsx` | Validate edition membership and render the server’s saved topic weight.
+| **Print pagination** | `app/globals.css` | Let long sections paginate and stack newspaper grids for letter-size printing.
 ---
 
 ## 9. Environment Variables (`.env.local`)
@@ -153,12 +158,15 @@ http://localhost:3000/today
 - **PDF/print edition** – Added letter-size print styling that retains the newspaper palette and hides navigation and interaction controls. The “Download PDF” action opens the browser print dialog; choose **Save as PDF** there.
 - **Public landing page** – Added a responsive editorial-style product landing page at `/`, with clear onboarding and returning-reader links. The authenticated daily paper now lives at `/today`; onboarding and newspaper navigation point there. The production build passes with both routes.
 - **Landing page expansion** – Added an illustrated “Inside your edition” preview for the lead, quick reads, and discovery sections, plus an accessible expandable FAQ covering personalization, original articles, and PDF saving.
+- **Recommendation and summary workflow** – Re-ranked stories by reader topic weights before freshness, removed image/snippet gates that excluded relevant stories, stored longer RSS source text, and added cached AI summaries grounded in publisher content. Older stories get a summary when their saved edition is opened. Legacy editions upgrade once through algorithm version 2.
+- **Feedback integrity** – Event requests use the signed-in cookie and verify that an article belongs to that reader’s edition. The interest meter uses the saved server weight rather than a mismatched client-side estimate.
+- **Print pagination** – Removed whole-section page-break locks, stacked nested grids in print, capped image heights, and kept article cards intact where possible.
 - **Edition archive** – Added `/archive` and `/edition/[date]`, both scoped to the signed-in reader. The archive links to saved editions and uses the existing `listEditions` / `getEditionByDate` helpers. The home and archive views share `lib/edition-page-data.ts` so current and previous editions render consistently.
 - **Daily RSS refresh** – Added `/api/cron/ingest` and `vercel.json` with a daily 01:00 UTC schedule. Configure `CRON_SECRET` in the deployment environment; the scheduled endpoint requires the matching bearer token. `/api/ingest` remains available for manual refresh while developing.
-- **Verification** – `npx next build --webpack` passes (including TypeScript); the build connected to the configured MongoDB. `npm run lint` passes with six pre-existing warnings and no errors. The local HTTP smoke check could not run because this environment denied local socket access, so interactive route behavior still needs a local browser check.
+- **Verification** – `npx next build --webpack` passes (including TypeScript); the build connected to the configured MongoDB. `npm run lint` passes with four existing warnings and no errors. Local HTTP access is blocked in this environment, so live Groq and browser flows still need a local check.
 
 ## 12. Next Work & Known Limitations
-- **Live verification** – From a local browser, walk through onboarding, edition creation, article interactions, PDF saving, archive navigation, and an authorized scheduled-ingestion request. The production build confirmed its MongoDB connection, but these interactive flows were not exercised here.
+- **Live verification** – In a local browser, regenerate today’s edition and confirm topics match the profile, AI summaries are grounded in publisher excerpts, article feedback persists, and the print dialog produces a legible multi-page PDF. The production build confirmed MongoDB connectivity, but live Groq and browser flows were not exercised here.
 - **Scheduled deployment** – The cron runs only on a deployment platform that honors `vercel.json` schedules. Set `CRON_SECRET` in that environment before enabling scheduled ingestion.
 - **Image CDN restrictions** – Some publishers block hot-linking; the app falls back to a placeholder when the request fails.
 - **Groq request latency** – Currently around 200 ms; caching per-user could improve onboarding responsiveness.

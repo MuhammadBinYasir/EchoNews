@@ -27,6 +27,7 @@ const parser = new Parser<Record<string, never>, CustomItem>({
 
 const MAX_ITEMS_PER_FEED = 25;
 const SNIPPET_LENGTH = 220;
+const SOURCE_TEXT_LENGTH = 6_000;
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -118,13 +119,17 @@ async function fetchFeed(feed: FeedSource) {
         .filter((it) => it.link && it.title)
         .map((it) => {
             const published = it.isoDate ? new Date(it.isoDate) : new Date();
-            const snippetSource = it.contentSnippet || it.content || it.summary || "";
+            const sourceText = trimTo(
+                cleanText(it.contentEncoded || it.content || it.summary || it.contentSnippet || ""),
+                SOURCE_TEXT_LENGTH
+            );
             return {
                 url: it.link!.trim(),
                 title: cleanText(it.title),
                 source: feed.source,
                 topic: feed.topic,
-                snippet: trimTo(cleanText(snippetSource), SNIPPET_LENGTH),
+                snippet: trimTo(sourceText, SNIPPET_LENGTH),
+                sourceText,
                 image: extractImage(it as Parser.Item & CustomItem),
                 publishedAt: isNaN(published.getTime()) ? new Date() : published,
             };
@@ -167,14 +172,20 @@ export async function ingestAll(): Promise<IngestReport> {
 
     let inserted = 0;
     if (articles.length > 0) {
-        // $setOnInsert: existing articles are left untouched, only new URLs are added
-        const ops = articles.map((a) => ({
-            updateOne: {
-                filter: { url: a.url },
-                update: { $setOnInsert: { ...a, fetchedAt: new Date() } },
-                upsert: true,
-            },
-        }));
+        // Refresh the publisher excerpt while preserving cached AI summaries.
+        const ops = articles.map((a) => {
+            const { sourceText, snippet, ...newArticle } = a;
+            return {
+                updateOne: {
+                    filter: { url: a.url },
+                    update: {
+                        $set: { sourceText, snippet },
+                        $setOnInsert: { ...newArticle, summary: "", fetchedAt: new Date() },
+                    },
+                    upsert: true,
+                },
+            };
+        });
         const res = await Article.bulkWrite(ops, { ordered: false });
         inserted = res.upsertedCount;
     }

@@ -9,6 +9,7 @@ interface ArticleItem {
   title: string;
   source: string;
   topic: string;
+  summary?: string;
   snippet?: string;
   image?: string;
   url: string;
@@ -37,6 +38,20 @@ interface EditionData {
     briefs: ArticleItem[];
     echo: ArticleItem[];
   };
+}
+
+function ArticleSummary({ article, className = "" }: { article: ArticleItem; className?: string }) {
+  const text = article.summary?.trim() || article.snippet?.trim();
+  if (!text) return null;
+
+  return (
+    <div className={`mb-5 ${className}`}>
+      <p className="mb-1 text-[9px] font-bold tracking-[0.16em] text-[#c0152f]">
+        {article.summary ? "ECHO SUMMARY" : "PUBLISHER EXCERPT"}
+      </p>
+      <p className="text-[14px] leading-[1.65] text-[#555049]">{text}</p>
+    </div>
+  );
 }
 
 export default function EditionClientView({
@@ -68,26 +83,22 @@ export default function EditionClientView({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: user.id,
           articleId,
           editionId: edition.id,
           type,
         }),
+        keepalive: type === "click",
       });
 
       const data = await res.json();
-      if (data.success && data.topic) {
-        // Adjust client interest weight smoothly
+      if (data.success && data.topic && typeof data.weight === "number") {
         setInterests((prev) =>
-          prev
-            .map((item) => {
-              if (item.topic === data.topic) {
-                const newWeight = Math.max(0, Math.min(100, item.weight + (type === "like" ? 15 : -10)));
-                return { ...item, weight: newWeight };
-              }
-              return item;
-            })
+          [
+            ...prev.filter((item) => item.topic !== data.topic),
+            { topic: data.topic, displayName: formatTopicName(data.topic), weight: data.weight },
+          ]
             .sort((a, b) => b.weight - a.weight)
+            .slice(0, 6)
         );
       }
     } catch (err) {
@@ -116,7 +127,7 @@ export default function EditionClientView({
   const totalArticles = (lead ? 1 : 0) + secondary.length + briefs.length + echo.length;
 
   return (
-    <div className="min-h-screen bg-[#f5f0e6] text-[#1a1917] font-sans selection:bg-[#c0152f] selection:text-white pb-16">
+    <div className="echo-document min-h-screen bg-[#f5f0e6] text-[#1a1917] font-sans selection:bg-[#c0152f] selection:text-white pb-16">
       {/* Top Utility Bar */}
       <header className="w-full border-b border-[#ded7cb] bg-[#f5f0e6]/90 backdrop-blur-xs sticky top-0 z-30 print:hidden">
         <div className="max-w-[1340px] mx-auto px-6 md:px-12 py-3 flex items-center justify-between">
@@ -262,12 +273,7 @@ export default function EditionClientView({
                   </div>
                 )}
 
-                {/* Snippet (hidden if empty) */}
-                {lead.snippet && lead.snippet.trim().length > 0 && (
-                  <p className="text-[16px] text-[#555049] leading-[1.65] mb-6">
-                    {lead.snippet}
-                  </p>
-                )}
+                <ArticleSummary article={lead} className="max-w-[760px]" />
 
                 {/* Lead Footer Meta & Actions */}
                 <div className="flex flex-wrap items-center justify-between gap-4 pt-3 border-t border-[#ded7cb]/60 text-[12px]">
@@ -365,11 +371,7 @@ export default function EditionClientView({
                           </a>
                         </h3>
 
-                        {art.snippet && art.snippet.trim().length > 0 && (
-                          <p className="text-[13px] text-[#6b655b] leading-relaxed line-clamp-3 mb-4">
-                            {art.snippet}
-                          </p>
-                        )}
+                        <ArticleSummary article={art} />
                       </div>
 
                       <div className="pt-3 border-t border-[#ded7cb]/60 mt-auto">
@@ -499,6 +501,7 @@ export default function EditionClientView({
                       <div className="text-[11px] text-[#c0152f] font-medium mb-2.5">
                         Because you like {formatTopicName(b.topic)}
                       </div>
+                      <ArticleSummary article={b} className="mb-4" />
 
                       <div className="echo-actions flex items-center gap-2 text-[11px]">
                         <a
@@ -606,11 +609,7 @@ export default function EditionClientView({
                       </a>
                     </h3>
 
-                    {eArt.snippet && eArt.snippet.trim().length > 0 && (
-                      <p className="text-[14px] text-[#6b655b] leading-relaxed mb-4">
-                        {eArt.snippet}
-                      </p>
-                    )}
+                    <ArticleSummary article={eArt} />
                   </div>
 
                   <div className="pt-3 border-t border-[#ded7cb]/60 mt-auto">

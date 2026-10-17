@@ -43,6 +43,8 @@ const ArticleSchema = new Schema(
         source: { type: String, required: true },
         topic: { type: String, enum: TOPICS, required: true },
         snippet: { type: String, default: "" },
+        sourceText: { type: String, default: "" },
+        summary: { type: String, default: "" },
         image: { type: String, default: null },
         publishedAt: { type: Date, required: true },
         fetchedAt: { type: Date, default: Date.now },
@@ -61,6 +63,7 @@ const EditionSchema = new Schema(
         userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
         date: { type: String, required: true }, // "YYYY-MM-DD"
         number: { type: Number, required: true },
+        algorithmVersion: { type: Number, default: 1 },
         layout: {
             lead: { type: Schema.Types.ObjectId, ref: "Article", required: true },
             secondary: [{ type: Schema.Types.ObjectId, ref: "Article" }],

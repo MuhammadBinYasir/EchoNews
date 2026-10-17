@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getOrCreateTodayEdition } from "@/lib/edition";
 
-export async function POST(req: NextRequest) {
+export const maxDuration = 60;
+
+export async function POST() {
   try {
     const cookieStore = await cookies();
     const userId = cookieStore.get("echo_user_id")?.value || cookieStore.get("userId")?.value;

@@ -5,6 +5,7 @@ import { toEditionPageData } from "@/lib/edition-page-data";
 import EditionClientView from "@/app/EditionClientView";
 
 export const instant = false;
+export const maxDuration = 60;
 
 export default async function ArchivedEditionPage({ params }: PageProps<"/edition/[date]">) {
   const { date } = await params;

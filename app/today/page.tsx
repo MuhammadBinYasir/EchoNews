@@ -7,6 +7,7 @@ import EditionClientView from "../EditionClientView";
 import { toEditionPageData } from "@/lib/edition-page-data";
 
 export const instant = false;
+export const maxDuration = 60;
 
 export default async function Home() {
   await connection();

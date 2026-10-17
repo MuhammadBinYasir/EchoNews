@@ -6,6 +6,7 @@ type ArticleItem = {
   title: string;
   source: string;
   topic: string;
+  summary?: string;
   snippet: string;
   image: string;
   url: string;
@@ -45,6 +46,7 @@ export function toEditionPageData(user: DataRecord, edition: DataRecord) {
       title: typeof doc.title === "string" ? doc.title : "",
       source: typeof doc.source === "string" ? doc.source : "",
       topic: typeof doc.topic === "string" ? doc.topic : "tech",
+      summary: typeof doc.summary === "string" ? doc.summary : "",
       snippet: typeof doc.snippet === "string" ? doc.snippet : "",
       image: typeof doc.image === "string" ? doc.image : "",
       url: typeof doc.url === "string" ? doc.url : "#",

@@ -2,6 +2,8 @@ interface GroqChatOptions {
   model?: string;
   temperature?: number;
   timeoutMs?: number;
+  maxTokens?: number;
+  systemPrompt?: string;
 }
 
 const GROQ_API_KEY =
@@ -34,7 +36,7 @@ export async function generateWithGroq(
         messages: [
           {
             role: "system",
-            content:
+            content: options.systemPrompt ||
               "You are an expert editorial intelligence curator for Echo newspaper. Pick the best matching headline.",
           },
           {
@@ -43,7 +45,7 @@ export async function generateWithGroq(
           },
         ],
         temperature: options.temperature ?? 0.2,
-        max_tokens: 256,
+        max_tokens: options.maxTokens ?? 256,
       }),
       signal: AbortSignal.timeout(timeoutMs),
     });
