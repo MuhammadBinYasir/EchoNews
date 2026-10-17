@@ -20,6 +20,7 @@
 ai‑hackathon‑project/
 ├── app/
 │   ├── api/
+│   │   ├── stories/route.ts          # Personalized recent story rail API
 │   │   ├── onboarding/
 │   │   │   ├── articles/route.ts   # Curates next headline (uses Gemini when configured)
 │   │   │   └── route.ts            # Final user creation + cookie set
@@ -28,6 +29,7 @@ ai‑hackathon‑project/
 │   │   └── event/route.ts          # Logs likes, skips, clicks → weight updates
 │   ├── onboarding/page.tsx          # 2‑step interactive onboarding UI
 │   ├── EditionClientView.tsx        # Interactive newspaper reader UI
+│   ├── NewsStoryRail.tsx             # Recent news story rail and viewer (web only)
 │   ├── globals.css                  # Tailwind config + CSS variables
 │   ├── layout.tsx                   # Root layout + Google fonts
 │   └── page.tsx                     # Server‑side rendering of today’s edition
@@ -100,6 +102,7 @@ Weights are clamped between `0.00` and `1.00`. The update logic lives in `app/ap
 - **Article summaries** – Gemini summarizes selected stories from stored publisher RSS content. Summaries are cached on Article records; a publisher excerpt remains the fallback if AI is unavailable. Treat RSS text as untrusted source data.
 - **Refresh behavior** – One edition is frozen per day. `algorithmVersion` upgrades an older same-day edition once after the ranking update; manual regeneration rebuilds it using current interests.
 - **Interactions** – `Like`, `Skip`, `Read original`, `Regenerate`, `Download PDF`. Explicit likes/skips and recent reading signals recompute the learned interest map, which ranks the next edition.
+- **Story rail** – The current edition page has a print-hidden, Instagram-style recent-news rail. `/api/stories` selects up to 10 stories from the last 7 days only for topics whose learned interest exceeds 0.25, ordering topic coverage from highest interest downward and prioritizing recent stories within each topic. Publisher diversity is maintained where possible. Readers can open the publisher, like a story, or ask for less like it; this feedback updates the same preference profile. Story links also use the approximate 30-second away-and-return read signal.
 ---
 
 ## 7. Learning Loop & Weight Calibration (`app/api/event/route.ts`)
@@ -164,19 +167,20 @@ http://localhost:3000/today
 - **Story rotation and regeneration** – Regenerate now excludes up to 300 recently shown article IDs recorded on the latest edition, then falls back to older stories only when fewer than 11 fresh preferred-topic candidates or two discovery candidates remain. Lead, secondary, brief, and discovery selections reduce repeated topics, publishers, and near-duplicate headlines. Onboarding gets a server-generated per-session shuffle so restarts offer a different selection while within-session seen IDs stay excluded. Regeneration waits for pending like/skip requests before rebuilding from the latest saved taste weights.
 - **PDF page fill** – Removed the browser page margins, extended the warm paper background to page edges, and kept readable inset spacing inside the newspaper content.
 - **Print preview follow-up** – The screenshot showed only the top summary printing because nested grid/flex content could be fragmented or clipped. Print styles now force the edition columns and nested flex content into visible, auto-height block flow, remove overflow/height constraints, and paint a full-page warm background behind the content. Verify the updated output in Chrome’s print preview; this environment has not visually rendered that preview.
-- **Feedback integrity** – Event requests use the signed-in cookie and verify that an article belongs to that reader’s edition. The interest meter uses the saved server weight rather than a mismatched client-side estimate.
+- **Feedback integrity** – Event requests use the reader cookie and verify either that a story belongs to the reader’s edition or that a standalone story is recent. The interest meter uses the saved server weight rather than a mismatched client-side estimate.
 - **Profile reuse** – Re-onboarding from a browser with a valid reader cookie updates that reader’s name and interests rather than creating a second profile. Existing editions and event history stay associated with the same user; newly issued reader cookies are HTTP-only.
 - **Edition menu** – Regenerate, archive, and confirmation-protected data deletion are grouped in the responsive More menu; Download PDF stays prominent in the utility bar.
 - **Reader data deletion** – `/api/account` permanently deletes the cookie-linked user, editions, and feedback events, then removes both reader cookies. Shared articles and AI summary cache remain intact.
 - **Mobile daily edition** – `/today` now stacks its utility controls on narrow screens, uses a two-column action grid, reduces small-screen padding and headline sizing, wraps article actions and metadata, and gives touch controls larger hit areas.
 - **Adaptive recommendations** – Kept onboarding preferences as a baseline and rebuild learned topic weights from feedback in the last 180 days using a 45-day half-life. Clicks add only a small signal, reads add a stronger signal after an approximate 30-second away-and-return dwell, likes/skips are stronger and replace opposing opinions per story/edition, and duplicate same-type actions are ignored. Core topic ranking now requires a meaningful preference above 0.25, so a single casual click does not reshape the edition.
+- **Recent news stories** – Added a personalized, circular story rail and full-screen viewer above today’s paper. Stories are drawn from the previous 7 days and only from topics with learned interest above 0.25; topic order follows the reader’s highest interest first, with recent stories prioritized within each topic. Publisher diversity is maintained where possible. The rail can be navigated with keyboard arrows and is hidden in print. Likes, skips, and publisher clicks feed the same learning loop.
 - **Print pagination** – Removed whole-section page-break locks, stacked nested grids in print, capped image heights, and kept article cards intact where possible.
 - **Edition archive** – Added `/archive` and `/edition/[date]`, both scoped to the signed-in reader. The archive links to saved editions and uses the existing `listEditions` / `getEditionByDate` helpers. The home and archive views share `lib/edition-page-data.ts` so current and previous editions render consistently.
 - **Daily RSS refresh** – Added `/api/cron/ingest` and `vercel.json` with a daily 01:00 UTC schedule. Configure `CRON_SECRET` in the deployment environment; the scheduled endpoint requires the matching bearer token. `/api/ingest` remains available for manual refresh while developing.
 - **Verification** – `npm run lint` passes with four existing warnings and `npx next build --webpack` passes, including the recent-history schema and onboarding session seed. The environment has no `GEMINI_API_KEY`; live Gemini responses are not verified. Print CSS changes still need a visual check in the local browser's Save as PDF preview.
 
 ## 12. Next Work & Known Limitations
-- **Live verification** – In a local browser, compare recommendations after several likes, skips, and qualified article reads, and check that the same story’s toggled opinion follows the latest choice. Test reader data deletion with a disposable profile and confirm cookies and private records are removed. Check `/today` at phone widths, revisit onboarding with an existing cookie, regenerate twice, and recheck Chrome’s PDF preview. Add `GEMINI_API_KEY` to `.env.local` (and deployment secrets) to verify live AI calls.
+- **Live verification** – In a local browser, confirm story freshness and personalization, test story viewer likes/skips, and verify the rail is hidden in PDF output. Compare recommendations after qualified reads and check toggled story opinions. Test reader data deletion, check `/today` at phone widths, revisit onboarding with an existing cookie, regenerate twice, and recheck Chrome’s PDF preview. Add `GEMINI_API_KEY` to `.env.local` (and deployment secrets) to verify live AI calls.
 - **Scheduled deployment** – The cron runs only on a deployment platform that honors `vercel.json` schedules. Set `CRON_SECRET` in that environment before enabling scheduled ingestion.
 - **Image CDN restrictions** – Some publishers block hot-linking; the app falls back to a placeholder when the request fails.
 - **Gemini request latency** – Gemini is optional for recommendations (scored ranking is the fallback) and used to generate uncached summaries only when needed; cached summaries avoid repeated calls.

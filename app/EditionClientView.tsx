@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { formatTimeAgo, formatTopicName } from "@/lib/format";
+import NewsStoryRail from "./NewsStoryRail";
 
 interface ArticleItem {
   _id: string;
@@ -259,6 +260,8 @@ export default function EditionClientView({
           </div>
         </div>
       </header>
+
+      {!isArchived && <NewsStoryRail />}
 
       {regenerateError && (
         <p role="alert" className="mx-auto max-w-[1340px] px-6 pt-3 text-sm text-[#a31126] print:hidden">

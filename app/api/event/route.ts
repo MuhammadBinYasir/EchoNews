@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { articleId, editionId, type } = body;
 
-    if (!articleId || !editionId || !EVENT_TYPES.includes(type as EventType)) {
+    if (!articleId || !EVENT_TYPES.includes(type as EventType)) {
       return NextResponse.json({ error: "Missing required event fields" }, { status: 400 });
     }
 
@@ -22,29 +22,35 @@ export async function POST(req: NextRequest) {
     if (!userId || !mongoose.isValidObjectId(userId)) {
       return NextResponse.json({ error: "Sign in to record reading feedback" }, { status: 401 });
     }
-    if (!mongoose.isValidObjectId(articleId) || !mongoose.isValidObjectId(editionId)) {
+    if (!mongoose.isValidObjectId(articleId) || (editionId && !mongoose.isValidObjectId(editionId))) {
       return NextResponse.json({ error: "Invalid article or edition" }, { status: 400 });
     }
 
     await connectDB();
 
-    const belongsToEdition = await Edition.exists({
-      _id: editionId,
-      userId,
-      $or: [
-        { "layout.lead": articleId },
-        { "layout.secondary": articleId },
-        { "layout.briefs": articleId },
-        { "layout.echo": articleId },
-      ],
-    });
-    if (!belongsToEdition) {
-      return NextResponse.json({ error: "Article is not part of this edition" }, { status: 403 });
+    if (editionId) {
+      const belongsToEdition = await Edition.exists({
+        _id: editionId,
+        userId,
+        $or: [
+          { "layout.lead": articleId },
+          { "layout.secondary": articleId },
+          { "layout.briefs": articleId },
+          { "layout.echo": articleId },
+        ],
+      });
+      if (!belongsToEdition) {
+        return NextResponse.json({ error: "Article is not part of this edition" }, { status: 403 });
+      }
     }
 
-    const article = await Article.findById(articleId).select("topic").lean();
+    const article = await Article.findById(articleId).select("topic publishedAt").lean();
     if (!article || !article.topic) {
       return NextResponse.json({ error: "Article not found" }, { status: 404 });
+    }
+    // Standalone story-rail feedback is allowed only for genuinely recent news.
+    if (!editionId && article.publishedAt.getTime() < Date.now() - 7 * 24 * 60 * 60 * 1000) {
+      return NextResponse.json({ error: "That story is no longer available for feedback." }, { status: 403 });
     }
     const user = await User.findById(userId);
     if (!user) return NextResponse.json({ error: "Reader profile not found" }, { status: 404 });
@@ -53,21 +59,24 @@ export async function POST(req: NextRequest) {
 
     // A repeated click/read should not inflate preference. A like/skip toggle
     // replaces the opposite opinion for this story in this edition.
+    const eventScope = {
+      userId,
+      articleId,
+      ...(editionId ? { editionId } : { editionId: { $exists: false } }),
+      origin: { $ne: "onboarding" as const },
+    };
     if (type === "like" || type === "skip") {
       await Event.deleteMany({
-        userId,
-        articleId,
-        editionId,
+        ...eventScope,
         type: type === "like" ? "skip" : "like",
-        origin: { $ne: "onboarding" },
       });
     }
-    const alreadyRecorded = await Event.exists({ userId, articleId, editionId, type });
+    const alreadyRecorded = await Event.exists({ ...eventScope, type });
     if (!alreadyRecorded) {
       await Event.create({
         userId,
         articleId,
-        editionId,
+        ...(editionId ? { editionId } : {}),
         topic,
         type: type as EventType,
         origin: "feedback",
