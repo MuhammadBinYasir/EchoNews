@@ -198,9 +198,10 @@ export const OnboardingPage = () => {
     "science",
   ]);
 
-  // Step 2 Article review state
-  const [articles, setArticles] = useState<ArticleCandidate[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  // Step 2 Dynamic Single Article review state
+  const [currentArticle, setCurrentArticle] = useState<ArticleCandidate | null>(null);
+  const [headlineIndex, setHeadlineIndex] = useState(0);
+  const [seenArticleIds, setSeenArticleIds] = useState<string[]>([]);
   const [likedArticleIds, setLikedArticleIds] = useState<string[]>([]);
   const [dislikedArticleIds, setDislikedArticleIds] = useState<string[]>([]);
   const [articlesLoading, setArticlesLoading] = useState(false);
@@ -230,7 +231,47 @@ export const OnboardingPage = () => {
     return `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
   };
 
-  // Transition from Step 1 to Step 2: fetch 8 candidate articles (6 from selected, 2 from other)
+  // Helper to fetch the next article based on dynamic likes/dislikes
+  const fetchNextArticle = async (
+    currentSeen: string[],
+    currentLikes: string[],
+    currentDislikes: string[]
+  ) => {
+    setArticlesLoading(true);
+    try {
+      const res = await fetch("/api/onboarding/articles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topics: selectedTopics,
+          seenIds: currentSeen,
+          likedIds: currentLikes,
+          dislikedIds: currentDislikes,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to load next headline.");
+      }
+
+      if (data.article) {
+        setCurrentArticle(data.article);
+      } else {
+        // No more candidates, finish onboarding
+        finalizeOnboarding(currentLikes, currentDislikes);
+      }
+    } catch (err: unknown) {
+      console.error(err);
+      setError(
+        err instanceof Error ? err.message : "Error loading headline."
+      );
+    } finally {
+      setArticlesLoading(false);
+    }
+  };
+
+  // Transition from Step 1 to Step 2: fetch the first single article
   const handleProceedToStep2 = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isStep1Eligible) {
@@ -243,33 +284,13 @@ export const OnboardingPage = () => {
     }
 
     setError(null);
-    setArticlesLoading(true);
+    setHeadlineIndex(0);
+    setSeenArticleIds([]);
+    setLikedArticleIds([]);
+    setDislikedArticleIds([]);
     setStep(2);
 
-    try {
-      const res = await fetch("/api/onboarding/articles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topics: selectedTopics }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to fetch candidate articles.");
-      }
-
-      setArticles(data.articles || []);
-      setCurrentIndex(0);
-    } catch (err: unknown) {
-      console.error(err);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Could not load sample articles. You can still complete onboarding."
-      );
-    } finally {
-      setArticlesLoading(false);
-    }
+    await fetchNextArticle([], [], []);
   };
 
   // Submit all state in one final single request (weights: 0.7 selected, 0.2 others, +0.15 per liked article)
@@ -311,35 +332,41 @@ export const OnboardingPage = () => {
     }
   };
 
-  // Handle Like on current headline
+  // Handle Like: boosts matching articles for next selection
   const handleLike = () => {
-    if (!articles[currentIndex]) return;
-    const currentId = articles[currentIndex].id;
+    if (!currentArticle) return;
+    const currentId = currentArticle.id;
+    const updatedSeen = [...seenArticleIds, currentId];
     const updatedLikes = [...likedArticleIds, currentId];
+
+    setSeenArticleIds(updatedSeen);
     setLikedArticleIds(updatedLikes);
 
-    if (currentIndex + 1 < articles.length) {
-      setCurrentIndex((prev) => prev + 1);
+    if (headlineIndex + 1 < 8) {
+      setHeadlineIndex((prev) => prev + 1);
+      fetchNextArticle(updatedSeen, updatedLikes, dislikedArticleIds);
     } else {
       finalizeOnboarding(updatedLikes, dislikedArticleIds);
     }
   };
 
-  // Handle Dislike on current headline
+  // Handle Dislike: ignores/demotes that type for next selection
   const handleDislike = () => {
-    if (!articles[currentIndex]) return;
-    const currentId = articles[currentIndex].id;
+    if (!currentArticle) return;
+    const currentId = currentArticle.id;
+    const updatedSeen = [...seenArticleIds, currentId];
     const updatedDislikes = [...dislikedArticleIds, currentId];
+
+    setSeenArticleIds(updatedSeen);
     setDislikedArticleIds(updatedDislikes);
 
-    if (currentIndex + 1 < articles.length) {
-      setCurrentIndex((prev) => prev + 1);
+    if (headlineIndex + 1 < 8) {
+      setHeadlineIndex((prev) => prev + 1);
+      fetchNextArticle(updatedSeen, likedArticleIds, updatedDislikes);
     } else {
       finalizeOnboarding(likedArticleIds, updatedDislikes);
     }
   };
-
-  const currentArticle = articles[currentIndex];
 
   return (
     <div className="min-h-screen bg-[#f5f0e6] text-[#1a1917] flex flex-col font-sans selection:bg-[#c0152f] selection:text-white">
@@ -663,7 +690,7 @@ export const OnboardingPage = () => {
                   What catches your eye, {name}?
                 </h2>
                 <p className="text-[14px] sm:text-[15px] text-[#6b655b] mt-1.5">
-                  Like it or leave it. {articles.length || 8} quick reads to help us get to know your taste.
+                  Like it or leave it. Quick reads to help us get to know your taste.
                 </p>
               </div>
 
@@ -690,10 +717,10 @@ export const OnboardingPage = () => {
                     />
                   </svg>
                   <p className="font-serif text-[18px] text-[#1a1917]">
-                    Searching articles across topics...
+                    Curating your next headline...
                   </p>
                   <p className="text-[12px] text-[#716c64] mt-1">
-                    Balancing 6 from your chosen interests and 2 unexpected discoveries.
+                    Matching articles to your likes and refining your taste profile.
                   </p>
                 </div>
               ) : currentArticle ? (
@@ -711,7 +738,7 @@ export const OnboardingPage = () => {
                       {/* Top Bar over Card */}
                       <div className="px-5 pt-4 pb-2.5 flex items-center justify-between text-[11px]">
                         <span className="font-mono uppercase tracking-[0.14em] text-[#716c64]">
-                          HEADLINE {String(currentIndex + 1).padStart(2, "0")} / {String(articles.length).padStart(2, "0")}
+                          HEADLINE {String(headlineIndex + 1).padStart(2, "0")} / 08
                         </span>
                         <span className="font-serif italic text-[#716c64] text-[12px]">
                           {currentArticle.isFromInterests
