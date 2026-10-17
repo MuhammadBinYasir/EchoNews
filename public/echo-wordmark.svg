@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 120" role="img" aria-labelledby="title">
+  <title id="title">Echo.</title>
+  <rect width="440" height="120" fill="#f5f0e6" />
+  <text x="8" y="94" fill="#1a1917" font-family="Georgia, 'Times New Roman', serif" font-size="108" font-weight="700" letter-spacing="-8">Echo</text>
+  <circle cx="329" cy="89" r="9" fill="#c0152f" />
+</svg>

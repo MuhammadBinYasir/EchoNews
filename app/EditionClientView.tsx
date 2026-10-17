@@ -220,13 +220,23 @@ export default function EditionClientView({
             YOUR DAILY, REIMAGINED
           </span>
           <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center sm:gap-2">
-            <button
-              onClick={() => window.print()}
-              className="inline-flex min-h-10 items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 bg-[#c0152f] hover:bg-[#a31126] text-white text-[11px] sm:text-[12px] font-medium rounded-[2px] transition-colors cursor-pointer shadow-xs"
-            >
-              <span>⬇</span>
-              <span>Download PDF</span>
-            </button>
+            {isArchived ? (
+              <button
+                onClick={() => window.print()}
+                className="inline-flex min-h-10 items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 bg-[#c0152f] hover:bg-[#a31126] text-white text-[11px] sm:text-[12px] font-medium rounded-[2px] transition-colors cursor-pointer shadow-xs"
+              >
+                <span>⬇</span>
+                <span>Download PDF</span>
+              </button>
+            ) : (
+              <Link
+                href="/print"
+                className="inline-flex min-h-10 items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 bg-[#c0152f] hover:bg-[#a31126] text-white text-[11px] sm:text-[12px] font-medium rounded-[2px] transition-colors cursor-pointer shadow-xs"
+              >
+                <span>⬇</span>
+                <span>Download PDF</span>
+              </Link>
+            )}
             <details className="relative col-span-2 sm:col-span-1 sm:ml-auto">
               <summary className="flex min-h-10 w-full cursor-pointer list-none items-center justify-center gap-2 rounded-[2px] border border-[#ded7cb] bg-[#fcfaf7] px-3.5 py-1.5 text-[11px] font-medium text-[#1a1917] transition-colors hover:border-[#1a1917] sm:w-auto sm:text-[12px]">
                 More

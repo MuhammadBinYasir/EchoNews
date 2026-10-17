@@ -1,17 +1,29 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { listEditions } from "@/lib/edition";
 import { formatEditionDate } from "@/lib/edition-page-data";
+import { getReaderIdCandidates } from "@/lib/reader-cookies";
 
 export const instant = false;
 
 export default async function ArchivePage() {
   const cookieStore = await cookies();
-  const userId = cookieStore.get("echo_user_id")?.value || cookieStore.get("userId")?.value;
-  if (!userId) redirect("/onboarding");
+  const userIds = getReaderIdCandidates(
+    cookieStore.get("echo_user_id")?.value,
+    cookieStore.get("userId")?.value,
+  );
+  if (!userIds.length) redirect("/onboarding");
 
-  const editions = await listEditions(userId);
+  // Edition data and its date-sensitive database query must run per request.
+  await connection();
+
+  let editions = [] as Awaited<ReturnType<typeof listEditions>>;
+  for (const userId of userIds) {
+    editions = await listEditions(userId);
+    if (editions.length) break;
+  }
 
   return (
     <main className="min-h-screen bg-[#f5f0e6] text-[#1a1917] px-6 md:px-12 py-8">
