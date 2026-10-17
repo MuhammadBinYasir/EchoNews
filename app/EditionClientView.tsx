@@ -136,6 +136,9 @@ export default function EditionClientView({
               <span>⬇</span>
               <span>Download PDF</span>
             </button>
+            <Link href="/archive" className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#c0152f]/70 hover:bg-[#a31126] text-white text-[12px] font-medium rounded-[2px] transition-colors cursor-pointer shadow-xs">
+              <span>Archive</span>
+            </Link>
           </div>
         </div>
       </header>

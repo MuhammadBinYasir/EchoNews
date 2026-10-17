@@ -156,3 +156,31 @@ Return JSON array of 3 strings: ["Takeaway 1", "Takeaway 2", "Takeaway 3"]`;
 
   return { user, edition: newEdition };
 }
+
+export async function getEditionByDate(userId: string, date: string) {
+  await connectDB();
+  const edition = await Edition.findOne({ userId, date })
+    .populate('layout.lead')
+    .populate('layout.secondary')
+    .populate('layout.briefs')
+    .populate('layout.echo')
+    .lean();
+  if (!edition) return null;
+  const user = await User.findById(userId).lean();
+  if (!user) return null;
+  return { user, edition };
+}
+
+export async function listEditions(userId: string) {
+  await connectDB();
+  const editions = await Edition.find({ userId })
+    .sort({ date: -1 })
+    .populate('layout.lead')
+    .lean();
+  return editions.map(ed => ({
+    date: ed.date,
+    number: ed.number,
+    leadTitle: (ed.layout?.lead as any)?.title || '',
+    leadImage: (ed.layout?.lead as any)?.image || ''
+  }));
+}

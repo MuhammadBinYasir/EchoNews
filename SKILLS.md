@@ -1,237 +1,159 @@
 # Echo — Project Documentation & Engineering Guide
 
 ## 1. Project Overview & Vision
-**Echo** is an AI-powered personalized daily newspaper designed to cut through information overload and deliver high-signal editorial journalism shaped around the reader's unique curiosity — while deliberately making room for serendipity ("Break the Echo").
+**Echo** is an AI‑powered personalized daily newspaper that curates high‑signal editorial journalism around each reader’s unique curiosity while deliberately introducing serendipitous stories (the *Break the Echo* section).
 
-Every morning, Echo compiles **one frozen daily edition** per user:
-- The lead story and primary sections match the reader's deepest interests.
-- Key takeaways are synthesized into **"Today in 3 Things"**.
-- A dedicated **"Break the Echo"** section injects intriguing stories from outside the user's usual bubble.
-- Every like, skip, and click dynamically recalibrates the user's taste profile for future editions.
+- One **frozen edition** is generated per user each morning.
+- The edition contains a lead story, secondary stories, briefs, and discovery articles.
+- User interactions (like, skip, read) continuously adjust a lightweight **taste profile** stored in MongoDB.
 
 ---
 
-## 2. Technology Stack & Directory Structure
-- **Framework**: Next.js 16 (App Router, Turbopack, TypeScript, React 19).
-- **Database**: MongoDB Atlas / local MongoDB (`mongodb://127.0.0.1:27017/echo`) via Mongoose.
-- **Styling**: Tailwind CSS v4 with bespoke editorial tokens and Google Newsreader serif typography.
-- **AI / LLM Engine**: Groq Cloud API (`llama-3.3-70b-versatile` via `process.env.GROQ_API` / `GRQO_API`) delivering ultra-fast (~200ms) curation and takeaway synthesis.
-- **RSS Ingestion**: `rss-parser` with custom media namespaces, entity decoding, and thumbnail cleaning.
+## 2. Technology Stack & Directory Layout
+- **Framework**: Next.js 16 (App Router, Turbopack, TypeScript, React 19)
+- **Database**: MongoDB Atlas / local MongoDB (`mongodb://127.0.0.1:27017/echo`) via Mongoose with a cached connection helper.
+- **Styling**: Tailwind CSS v4 + custom design tokens (crimson primary, warm paper secondary) and Google **Newsreader** serif typography.
+- **LLM Engine**: **Groq Cloud** (`llama‑3.3‑70b‑versatile`) – accessed through `lib/groq.ts`.
+- **RSS Ingestion**: `rss-parser` + custom image cleaning (`lib/clean-images.ts`).
 
 ```
-ai-hackathon-project/
+ai‑hackathon‑project/
 ├── app/
 │   ├── api/
+│   │   ├── onboarding/
+│   │   │   ├── articles/route.ts   # Curates next headline (uses Groq)
+│   │   │   └── route.ts            # Final user creation + cookie set
 │   │   ├── edition/
-│   │   │   └── regenerate/route.ts  # Regenerates today's paper on demand
-│   │   ├── event/route.ts           # Handles Like, Skip, and Click signals (+ weight adjustments)
-│   │   ├── ingest/route.ts          # Triggers RSS feed polling across 25+ sources
-│   │   └── onboarding/
-│   │       ├── articles/route.ts    # Curates the dynamic next headline for taste onboarding
-│   │       └── route.ts             # Final single-transaction user creation & cookie setting
-│   ├── onboarding/page.tsx          # 2-step interactive onboarding flow
-│   ├── EditionClientView.tsx        # Client interactive newspaper reader (events, PDF, regenerate)
-│   ├── globals.css                  # Tailwind v4 theme variables and editorial styles
-│   ├── layout.tsx                   # Root HTML structure with Google Newsreader serif font
-│   └── page.tsx                     # Dynamic Server Component rendering today's personalized edition
+│   │   │   └── regenerate/route.ts # Regenerates today’s edition on demand
+│   │   └── event/route.ts          # Logs likes, skips, clicks → weight updates
+│   ├── onboarding/page.tsx          # 2‑step interactive onboarding UI
+│   ├── EditionClientView.tsx        # Interactive newspaper reader UI
+│   ├── globals.css                  # Tailwind config + CSS variables
+│   ├── layout.tsx                   # Root layout + Google fonts
+│   └── page.tsx                     # Server‑side rendering of today’s edition
 ├── lib/
-│   ├── clean-images.ts              # Decodes XML entities and strips CDN downsampling parameters
-│   ├── curate-onboarding.ts         # Dynamic 1-by-1 headline curation with Groq LLM integration
-│   ├── edition.ts                   # Daily edition layout generator, ranker, and compiler
-│   ├── feeds.ts                     # Curated list of high-quality RSS feeds across 8 topics
-│   ├── format.ts                    # Client-safe formatting utilities (time ago, topic titles, interests map)
-│   ├── groq.ts                      # Groq API client with resilient timeout handling
-│   ├── ingest.ts                    # RSS parsing, deduplication, and database ingestion
-│   └── mongo.ts                     # Cached singleton MongoDB connection for Next.js serverless
+│   ├── curate‑onboarding.ts         # Core article selection logic (weights, Groq)
+│   ├── edition.ts                   # Builds edition layout from user profile
+│   ├── feeds.ts                     # RSS source list (8 topics, 25+ feeds)
+│   ├── format.ts                    # Human‑readable time‑ago, topic titles, etc.
+│   ├── groq.ts                      # Thin wrapper around Groq HTTP API
+│   ├── ingest.ts                    # Bulk RSS ingestion, deduplication
+│   ├── clean‑images.ts              # Entity decoding & down‑sampling removal
+│   └── mongo.ts                     # Cached singleton Mongoose connection
 ├── model/
 │   └── index.ts                     # Mongoose schemas: User, Article, Edition, Event, LlmCache
-└── tailwind.config.ts               # Theme extensions (Crimson primary, warm paper secondary)
+├── models/                         # Re‑export shim for legacy imports
+│   └── index.ts                     # `export * from "../model/index";`
+├── tailwind.config.ts               # Primary & secondary colour palettes
+└── SKILLS.md                        # Project documentation (this file)
 ```
-
 ---
 
-## 3. Data Models & Schemas (`model/index.ts`)
+## 3. Data Models (`model/index.ts`)
+- **TOPICS** – fixed enum: `tech, ai, world, business, sports, science, health, culture`
+- **User** – `name`, `interests` (Map of topic → weight 0‑1), `createdAt`
+- **Article** – `url`, `title`, `source`, `topic`, `snippet`, `image`, `publishedAt`, `fetchedAt`
+- **Edition** – per‑user, per‑date snapshot with lead, secondary, briefs, and discovery article IDs.
+- **Event** – raw interaction logs (`like`, `click`, `skip`, `read`) used to adjust weights.
 
-### Fixed Topics Enum
-```typescript
-export const TOPICS = [
-  "tech", "ai", "world", "business", "sports", "science", "health", "culture"
-] as const;
-```
-
-### 1. User
-- **Fields**:
-  - `name` (string, required, trimmed): The name displayed on the masthead ("Prepared for Alex").
-  - `interests` (Map<string, number>, topic -> weight `0.00` to `1.00`): Reader's taste profile.
-  - `createdAt` (Date).
-- **Purpose**: Identifies the reader and holds their evolving topic preferences.
-- **Identity**: User `_id` is stored in the `echo_user_id` and `userId` cookies (1-year lifespan).
-- **Notes**: Weights update on every button press with `$inc` and are clamped between `0.0` and `1.0`.
-
-### 2. Article
-- **Fields**:
-  - `url` (string, unique, required): Canonical article URL (used for upsert deduplication).
-  - `title` (string, required): Clean headline.
-  - `source` (string, required): Publication name (e.g., "BBC News", "The Verge", "Nature").
-  - `topic` (enum: TOPICS, required).
-  - `snippet` (string): Text excerpt from article body or summary.
-  - `image` (string, optional): Full-resolution image URL.
-  - `publishedAt` (Date, required): Timestamp of publication.
-  - `fetchedAt` (Date).
-- **Indexes**: Unique on `url`, compound index on `{ topic: 1, publishedAt: -1 }`.
-
-### 3. Edition
-- **Fields**:
-  - `userId` (ObjectId, ref: "User", required).
-  - `date` (string, required): `"YYYY-MM-DD"`.
-  - `number` (number, required): Sequential issue number (e.g., 1 for "EDITION NO. 001").
-  - `layout`:
-    - `lead`: ObjectId (ref: "Article", the Big Read).
-    - `secondary`: [ObjectId] (4 articles in "More for you" 2x2 grid).
-    - `briefs`: [ObjectId] (6 articles in "In brief" sidebar).
-    - `echo`: [ObjectId] (2 articles in "Break the Echo").
-  - `threeThings`: [string] (3 synthesized takeaway bullets).
-  - `createdAt` (Date).
-- **Indexes**: Unique on `{ userId: 1, date: -1 }` (enforcing one frozen edition per day).
-
-### 4. Event
-- **Fields**: `userId`, `articleId`, `editionId`, `topic`, `type` (`click` | `like` | `skip` | `read`), `ts`.
-- **Purpose**: Raw log of reader interactions that drives the active learning loop.
-- **Signal Weights**:
-  - `like`: **+0.20**
-  - `click` ("Read original"): **+0.10**
-  - `read` (>30 seconds): **+0.05**
-  - `skip`: **-0.10**
-
+Weights are clamped between `0.00` and `1.00`. The update logic lives in `app/api/event/route.ts`.
 ---
 
 ## 4. Design System & Theme Palette
+| Role | Colour (hex) | Usage |
+|------|--------------|-------|
+| **Primary (Crimson)** | `#c0152f` (base) <br> `#a31126` (hover) <br> `#fae9e7` (tint) <br> `#ebc2bc` (border) | Action buttons, progress bars, selected topic pills |
+| **Secondary (Paper)** | `#f5f0e6` / `#f6f1e8` (page background) <br> `#ffffff` (card background) <br> `#ded7cb` (card border) <br> `#1a1917` (ink/primary text) <br> `#716c64` (metadata/secondary text) | Overall page, cards, footers |
 
-The UI adopts a tactile, high-end editorial newspaper aesthetic inspired by vintage print publications:
-
-- **Primary (Crimson)**:
-  - Base: `#c0152f` (used for the `Echo.` period, action buttons, progress bars, and active badges).
-  - Hover: `#a31126`.
-  - Light/Tint: `#fae9e7` (selected cards and pills).
-  - Border: `#ebc2bc`.
-- **Secondary (Warm Newsprint Paper & Ink)**:
-  - Page Background: `#f5f0e6` / `#f6f1e8` (warm linen/cream tone).
-  - Card Background: `#ffffff` with subtle `#ded7cb` borders and soft shadow.
-  - Ink Charcoal: `#1a1917` (rich newsprint black).
-  - Muted Editorial Gray: `#716c64` (secondary metadata, timestamps).
-- **Typography**:
-  - Headlines & Masthead: **Google Newsreader** serif (`--font-serif`) for timeless editorial gravitas.
-  - Labels & Metadata: **Geist Sans** (`--font-sans`) with letter-spacing tracking.
-
+**Typography** – Google **Newsreader** for headlines & masthead, **Geist** for UI labels.
 ---
 
-## 5. Ingestion Pipeline & Image Optimization
-
-### Feed Ingestion (`lib/ingest.ts` & `lib/feeds.ts`)
-- Ingests articles from 25+ trusted publications (The Verge, MIT Tech Review, BBC News, Nature, ScienceDaily, NPR, The Guardian, etc.).
-- Uses `Promise.allSettled` so that slow or broken RSS feeds never crash the ingestion run.
-- Deduplicates via MongoDB bulk upserts (`$setOnInsert` on `url`).
-
-### Image Quality & Entity Decoding (`lib/clean-images.ts`)
-1. **XML Entity Decoding**: RSS feeds from WordPress and major outlets encode query ampersands as `&#038;` or `&amp;` (e.g. `?quality=90&#038;crop=0,0,100,100`). Browsers treat `#` as an in-page fragment hash, breaking the request. The cleaner converts all instances to valid `&`.
-2. **Stripping Downsampling Filters**: Aggressive thumbnail crop parameters (such as `&crop=0,0,100,100`, `resize=...`, `w=150`) are stripped so the browser receives the **original full-resolution photo**.
-3. **Referrer Policy**: Cards render images with `referrerPolicy="no-referrer"` so news CDNs do not block hotlinking from `localhost` with 403 Forbidden.
-
+## 5. Onboarding Flow (`app/onboarding/page.tsx`)
+1. **Step 1 – Masthead & Topic Selection**
+   - Collects user name.
+   - Requires a minimum of three selected topics.
+   - No DB write yet – everything lives in client state.
+2. **Step 2 – Dynamic Headline Tapping**
+   - Calls `/api/onboarding/articles` (POST) which runs `getNextOnboardingArticle`.
+   - The server uses **Groq** to pick the *best* next article given:
+     - Selected topics (`0.7` weight each)
+     - Other topics (`0.2` weight each)
+     - Incremental `+0.15` for each liked article (capped at `1.0`).
+   - Up to 8 headlines are shown (6 from chosen topics, 2 exploratory).
+   - Likes/dislikes update client‑side arrays; the next request sends the cumulative lists.
+3. **Finalisation** (`/api/onboarding/route.ts`)
+   - Creates a `User` document with the computed interest map.
+   - Sets `echo_user_id` and `userId` cookies (1‑year TTL).
+   - Redirects to the home page (`/`).
 ---
 
-## 6. Onboarding Flow (`app/onboarding/page.tsx`)
-
-A 2-step journey where **no user record is created in MongoDB until the user completes the flow**.
-
-### Step 1: Masthead & Topic Selection
-- Asks for the reader's name ("What should we call you?").
-- The reader selects **3 or more topics** from the 8-topic grid.
-- State is held in client memory. Clicking "Find my headlines →" transitions to Step 2 without hitting the database.
-
-### Step 2: Dynamic 1-by-1 Headline Tapping
-Instead of dumping a batch of articles, the system presents **1 article at a time** in an adaptive loop:
-- **Progress Tracking**: Reviews up to 8 total headlines (`HEADLINE 01 / 08`, `HEADLINE 02 / 08`, etc.).
-- **Dynamic Like Matching**: When the user taps **"Like article"**, its topic (+5) and title keywords (+4) are boosted. The server queries candidate articles matching those specific interests.
-- **Dynamic Dislike Filtering**: When the user taps **"Dislike article"**, that topic and angle are penalized (-8) to pivot to other selected interests.
-- **Groq Intelligence**: Groq (`llama-3.3-70b-versatile` via `lib/groq.ts`) inspects candidate headlines against accumulated likes/dislikes and selects the best next headline in ~200ms.
-- **Discovery Injection**: At steps 7 and 8, the system introduces exploratory articles from unchosen topics.
-- **Skip Option**: The user can click "Skip for now — take me to my edition" at any time to immediately finalize.
-
-### Initial Weight Formula & Single Deferred Write (`/api/onboarding`)
-When all headlines are reviewed (or skipped):
-1. **Starting Weights**:
-   - Each selected topic starts at **0.70**.
-   - Every other topic starts at **0.20**.
-2. **Liked Headline Adjustments**:
-   - For every liked article, its topic is looked up and receives **+0.15** (clamped to a max of **1.00**).
-3. **Database Write**:
-   - Creates the `User` in MongoDB in a single final write.
-   - Logs initial `Event` records for the learning loop.
-   - Sets `echo_user_id` and `userId` cookies (1-year duration).
-   - Redirects the reader to `/` (their freshly generated paper).
-
+## 6. Daily Edition Engine (`app/page.tsx` & `lib/edition.ts`)
+- **Authentication** – Reads the cookie; redirects to `/onboarding` if missing.
+- **Dynamic Server Component** – Uses `await connectDB()` (via cached helper) to keep the request dynamic (avoids `new Date()` prerender error).
+- **Layout**
+  - **Lead** – Highest‑ranked article for the top‑weight topic.
+  - **More for you** – 4 secondary articles (2×2 grid).
+  - **In brief** – 6 short reads.
+  - **Break the Echo** – 2 low‑weight‑topic articles to broaden horizons.
+  - **Today in 3 Things** – Groq‑generated bullet takeaways.
+- **Interactions** – `Like`, `Skip`, `Read original`, `Regenerate`, `Download PDF`. Each logs an `Event` which immediately updates the user’s interest map.
 ---
 
-## 7. Daily Edition Engine (`app/page.tsx` & `lib/edition.ts`)
-
-When an onboarded reader visits `/`:
-
-1. **Authentication Check**: Reads `echo_user_id` cookie. If missing or invalid, redirects to `/onboarding`.
-2. **Dynamic Runtime**: Uses `await connection()` from `next/server` to declare dynamic per-user execution, preventing static prerender conflicts with `new Date()` and cookies in Next.js 16.
-3. **Layout Compilation**:
-   - **Lead Article (The Big Read)**: Top-ranked article from the user's primary interest.
-   - **More for you**: 4 secondary articles arranged in a 2x2 grid.
-   - **Your interests Panel**: Real-time progress bars showing the reader's **top 6 topics in descending order** with actual percentages (e.g. `85%`, `70%`).
-   - **In brief**: 6 quick reads with time ago calculations.
-   - **Break the Echo**: 2 curated articles from the user's **lowest-weight topics** to expand their horizons.
-   - **Today in 3 Things**: 3 concise takeaways generated from the top stories of the edition.
-4. **100% Real Data**:
-   - No fake authors or desks; shows the real source publication (`BBC News`, `The Verge`).
-   - Shows calculated times ago (`3 hours ago`, `Yesterday`) from `publishedAt`.
-   - Snippet text hides cleanly when empty.
-   - Real edition numbering (`EDITION NO. 001`).
-5. **Interactive Controls**:
-   - **[ Read original ]**: Opens publisher link in a new tab and logs a `click` event.
-   - **[ Like ]**: Turns crimson red, logs a `like` event (`+0.20`), and smoothly increments the topic progress bar.
-   - **[ Skip ]**: Dims the card and logs a `skip` event (`-0.10`).
-   - **[ ⟳ Regenerate ]**: Calls `POST /api/edition/regenerate` to compile fresh stories.
-   - **[ ⬇ Download PDF ]**: Triggers `window.print()` formatted for clean newspaper print output.
-
----
-
-## 8. Learning Loop & Weight Calibration (`app/api/event/route.ts`)
-
-Every button click updates the reader's taste model:
-```typescript
-const WEIGHT_DELTAS = {
-  click: 0.10,
-  like:  0.20,
-  skip: -0.10,
-  read:  0.05,
-};
-
-// Weight is clamped between 0.00 and 1.00
-const updated = Math.max(0.0, Math.min(1.0, parseFloat((current + delta).toFixed(2))));
+## 7. Learning Loop & Weight Calibration (`app/api/event/route.ts`)
+```ts
+const WEIGHT_DELTAS = { click: 0.10, like: 0.20, skip: -0.10, read: 0.05 };
+// Updated weight is clamped between 0.00 and 1.00
 ```
+All events feed back into the user document, influencing the next edition generation and the onboarding article selector.
+---
 
-The next time an edition is generated or regenerated, the new weights directly influence article candidate scoring, lead story selection, and the "Break the Echo" discovery pool.
-
+## 8. Development Milestones (What we added today)
+| Milestone | File(s) Affected | Description |
+|-----------|----------------|-------------|
+| **Tailwind config** | `tailwind.config.ts` | Added primary (`crimson`) and secondary (paper) color palettes; ensured `content` includes `app/**/*.{js,ts,jsx,tsx,mdx}`.
+| **CSS variables** | `app/globals.css` | Injected `:root` tokens for the colours, linked config via `@config "../tailwind.config.ts"`.
+| **Google fonts** | `app/layout.tsx` | Imported **Newsreader** serif and configured `--font-serif` variable.
+| **MongoDB connection** | `lib/mongo.ts` | Implemented a cached singleton Mongoose connection compatible with Next.js serverless.
+| **Model re‑export** | `models/index.ts` | Shim to satisfy imports that expect a `models` folder.
+| **Onboarding article API** | `app/api/onboarding/articles/route.ts` | Parses request body, forwards to `getNextOnboardingArticle`, returns JSON.
+| **Onboarding UI tweaks** | `app/onboarding/page.tsx` | Fixed missing default export, refined progress bar colours, added fallback image handling.
+| **Build verification** | `npm run build` | Confirmed no TypeScript or runtime errors after the above changes.
 ---
 
 ## 9. Environment Variables (`.env.local`)
 ```ini
-# MongoDB Connection URI
+# MongoDB connection string
 MONGODB_URI=mongodb://127.0.0.1:27017/echo
 
-# Groq Cloud API Key (supports GROQ_API or GRQO_API)
+# Groq Cloud API key (accepts GROQ_API or GRQO_API)
 GROQ_API=gsk_your_groq_api_key_here
 ```
+---
+
+## 10. Running the Project
+```bash
+# Install dependencies
+npm install
+
+# Start dev server
+npm run dev   # http://localhost:3000
+
+# Ingest RSS feeds (populate DB)
+open http://localhost:3000/api/ingest   # or curl GET /api/ingest
+
+# Onboard a new user
+http://localhost:3000/onboarding
+
+# View today’s edition after onboarding
+http://localhost:3000/
+```
+---
+
+## 11. Future Work & Known Limitations
+- **Image CDN restrictions** – Some publishers block hot‑linking; we fallback to a placeholder when the request fails.
+- **Groq request latency** – Currently ~200 ms; can be cached per‑user for the onboarding session.
+- **Archive feature** – Implemented `getEditionByDate`, `listEditions` helpers and UI (`/archive` and `/edition/[date]`). Archive page is a Server Component.
 
 ---
 
-## 10. Development & Verification
-- **Run Dev Server**: `npm run dev` (starts on `http://localhost:3000`).
-- **Ingest RSS Feeds**: Open `http://localhost:3000/api/ingest` in the browser or trigger via GET request.
-- **Onboarding Flow**: Navigate to `http://localhost:3000/onboarding`.
-- **Daily Edition**: Navigate to `http://localhost:3000/`.
-- **Production Build Validation**: `npm run build` (verified clean compilation with Turbopack and TypeScript).
+*This file (`SKILLS.md`) is automatically generated/updated by the Antigravity coding assistant to keep documentation in sync with the codebase.*
