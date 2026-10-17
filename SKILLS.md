@@ -149,10 +149,18 @@ http://localhost:3000/
 ```
 ---
 
-## 11. Future Work & Known Limitations
-- **Image CDN restrictions** – Some publishers block hot‑linking; we fallback to a placeholder when the request fails.
-- **Groq request latency** – Currently ~200 ms; can be cached per‑user for the onboarding session.
-- **Archive feature** – Implemented `getEditionByDate`, `listEditions` helpers and UI (`/archive` and `/edition/[date]`). Archive page is a Server Component.
+## 11. Implementation Log — 17 October 2026
+- **PDF/print edition** – Added letter-size print styling that retains the newspaper palette and hides navigation and interaction controls. The “Download PDF” action opens the browser print dialog; choose **Save as PDF** there.
+- **Edition archive** – Added `/archive` and `/edition/[date]`, both scoped to the signed-in reader. The archive links to saved editions and uses the existing `listEditions` / `getEditionByDate` helpers. The home and archive views share `lib/edition-page-data.ts` so current and previous editions render consistently.
+- **Daily RSS refresh** – Added `/api/cron/ingest` and `vercel.json` with a daily 01:00 UTC schedule. Configure `CRON_SECRET` in the deployment environment; the scheduled endpoint requires the matching bearer token. `/api/ingest` remains available for manual refresh while developing.
+- **Verification** – `npx next build --webpack` passes (including TypeScript); the build connected to the configured MongoDB. `npm run lint` passes with six pre-existing warnings and no errors. The local HTTP smoke check could not run because this environment denied local socket access, so interactive route behavior still needs a local browser check.
+
+## 12. Next Work & Known Limitations
+- **Live verification** – From a local browser, walk through onboarding, edition creation, article interactions, PDF saving, archive navigation, and an authorized scheduled-ingestion request. The production build confirmed its MongoDB connection, but these interactive flows were not exercised here.
+- **Scheduled deployment** – The cron runs only on a deployment platform that honors `vercel.json` schedules. Set `CRON_SECRET` in that environment before enabling scheduled ingestion.
+- **Image CDN restrictions** – Some publishers block hot-linking; the app falls back to a placeholder when the request fails.
+- **Groq request latency** – Currently around 200 ms; caching per-user could improve onboarding responsiveness.
+- **Hackathon materials** – Confirm the repository is public and prepare the product walkthrough and architecture diagram required for submission.
 
 ---
 

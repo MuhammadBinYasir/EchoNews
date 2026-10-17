@@ -36,20 +36,12 @@ export function formatTopicName(topic: string): string {
   }
 }
 
-export function extractInterestsMap(raw: any): Record<string, number> {
-  if (!raw) return {};
+export function extractInterestsMap(raw: unknown): Record<string, number> {
   if (raw instanceof Map) {
-    return Object.fromEntries(raw);
+    return Object.fromEntries(raw) as Record<string, number>;
   }
-  if (typeof raw === "object") {
-    if (typeof raw.entries === "function") {
-      try {
-        return Object.fromEntries(raw.entries());
-      } catch {
-        // fallback
-      }
-    }
-    return { ...raw };
+  if (raw && typeof raw === "object") {
+    return { ...(raw as Record<string, number>) };
   }
   return {};
 }

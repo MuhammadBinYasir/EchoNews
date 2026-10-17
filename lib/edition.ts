@@ -1,7 +1,6 @@
 import { connectDB } from "@/lib/mongo";
 import { User, Article, Edition, Topic, TOPICS } from "@/model";
 import { generateWithGroq } from "@/lib/groq";
-import { cleanHighQualityImageUrl } from "@/lib/clean-images";
 import { formatTimeAgo, formatTopicName, extractInterestsMap } from "@/lib/format";
 
 export { formatTimeAgo, formatTopicName, extractInterestsMap };
@@ -177,10 +176,13 @@ export async function listEditions(userId: string) {
     .sort({ date: -1 })
     .populate('layout.lead')
     .lean();
-  return editions.map(ed => ({
-    date: ed.date,
-    number: ed.number,
-    leadTitle: (ed.layout?.lead as any)?.title || '',
-    leadImage: (ed.layout?.lead as any)?.image || ''
-  }));
+  return editions.map((ed) => {
+    const lead = ed.layout?.lead as unknown as { title?: string; image?: string } | null;
+    return {
+      date: ed.date,
+      number: ed.number,
+      leadTitle: lead?.title || "",
+      leadImage: lead?.image || "",
+    };
+  });
 }

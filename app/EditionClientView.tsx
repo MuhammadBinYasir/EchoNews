@@ -29,6 +29,7 @@ interface EditionData {
   id: string;
   date: string;
   number: number;
+  isArchived?: boolean;
   threeThings: string[];
   layout: {
     lead: ArticleItem | null;
@@ -41,9 +42,11 @@ interface EditionData {
 export default function EditionClientView({
   user,
   edition,
+  isArchived = false,
 }: {
   user: UserData;
   edition: EditionData;
+  isArchived?: boolean;
 }) {
   const [likedArticles, setLikedArticles] = useState<Record<string, boolean>>({});
   const [skippedArticles, setSkippedArticles] = useState<Record<string, boolean>>({});
@@ -121,14 +124,16 @@ export default function EditionClientView({
             YOUR DAILY, REIMAGINED
           </span>
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleRegenerate}
-              disabled={regenerating}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 border border-[#ded7cb] hover:border-[#1a1917] bg-[#fcfaf7] text-[12px] font-medium text-[#1a1917] rounded-[2px] transition-colors cursor-pointer"
-            >
-              <span>⟳</span>
-              <span>{regenerating ? "Regenerating..." : "Regenerate"}</span>
-            </button>
+            {!isArchived && (
+              <button
+                onClick={handleRegenerate}
+                disabled={regenerating}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 border border-[#ded7cb] hover:border-[#1a1917] bg-[#fcfaf7] text-[12px] font-medium text-[#1a1917] rounded-[2px] transition-colors cursor-pointer"
+              >
+                <span>⟳</span>
+                <span>{regenerating ? "Regenerating..." : "Regenerate"}</span>
+              </button>
+            )}
             <button
               onClick={() => window.print()}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-[#c0152f] hover:bg-[#a31126] text-white text-[12px] font-medium rounded-[2px] transition-colors cursor-pointer shadow-xs"
@@ -144,7 +149,7 @@ export default function EditionClientView({
       </header>
 
       {/* Newspaper Container */}
-      <main className="max-w-[1340px] mx-auto px-6 md:px-12 pt-8">
+      <main className="echo-paper max-w-[1340px] mx-auto px-6 md:px-12 pt-8">
         {/* Main Masthead Header */}
         <section className="border-b border-[#ded7cb] pb-6 mb-4">
           <div className="grid grid-cols-1 md:grid-cols-3 items-end gap-6">
@@ -215,7 +220,7 @@ export default function EditionClientView({
         )}
 
         {/* Main Grid: Left/Center Articles (8 cols) + Right Sidebar (4 cols) */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14">
+        <div className="echo-print-grid grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-14">
           
           {/* Left Column (Lead + Secondary Grid) */}
           <section className="lg:col-span-8 flex flex-col">
@@ -276,7 +281,7 @@ export default function EditionClientView({
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="echo-actions flex items-center gap-2">
                     <a
                       href={lead.url}
                       target="_blank"
@@ -377,7 +382,7 @@ export default function EditionClientView({
                           Because you like {formatTopicName(art.topic)}
                         </div>
 
-                        <div className="flex items-center gap-2 text-[11px]">
+                        <div className="echo-actions flex items-center gap-2 text-[11px]">
                           <a
                             href={art.url}
                             target="_blank"
@@ -495,7 +500,7 @@ export default function EditionClientView({
                         Because you like {formatTopicName(b.topic)}
                       </div>
 
-                      <div className="flex items-center gap-2 text-[11px]">
+                      <div className="echo-actions flex items-center gap-2 text-[11px]">
                         <a
                           href={b.url}
                           target="_blank"
@@ -616,7 +621,7 @@ export default function EditionClientView({
                       Outside your interests · A different point of view
                     </div>
 
-                    <div className="flex items-center gap-2 text-[12px]">
+                    <div className="echo-actions flex items-center gap-2 text-[12px]">
                       <a
                         href={eArt.url}
                         target="_blank"

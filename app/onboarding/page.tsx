@@ -184,7 +184,7 @@ const TOPICS_DATA: TopicOption[] = [
   },
 ];
 
-export const OnboardingPage = () => {
+const OnboardingPage = () => {
   const router = useRouter();
 
   // Multi-step state: 1 (Masthead & Topics) or 2 (Tapping Headlines)
