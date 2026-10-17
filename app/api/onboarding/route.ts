@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { connectDB } from "@/lib/mongo";
 import { User, Article, Event, TOPICS, Topic } from "@/model";
+import mongoose from "mongoose";
 
 export async function POST(req: NextRequest) {
   try {
@@ -61,8 +62,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. Create the user in MongoDB (one single write at the end of onboarding)
-    const user = await User.create({
+    // Re-onboarding in the same browser updates its existing reader profile.
+    // This keeps editions and feedback attached to the same user instead of
+    // creating an unreachable duplicate profile on every onboarding run.
+    const cookieStore = await cookies();
+    const existingUserId =
+      cookieStore.get("echo_user_id")?.value || cookieStore.get("userId")?.value;
+    const existingUser = existingUserId && mongoose.isValidObjectId(existingUserId)
+      ? await User.findByIdAndUpdate(
+          existingUserId,
+          { $set: { name: name.trim(), interests: weights } },
+          { new: true, runValidators: true }
+        )
+      : null;
+    const user = existingUser ?? await User.create({
       name: name.trim(),
       interests: weights,
       createdAt: new Date(),
@@ -109,17 +122,18 @@ export async function POST(req: NextRequest) {
     }
 
     // 5. Set user cookies
-    const cookieStore = await cookies();
     cookieStore.set("echo_user_id", userIdStr, {
       path: "/",
-      httpOnly: false,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
       maxAge: 60 * 60 * 24 * 365,
       sameSite: "lax",
     });
 
     cookieStore.set("userId", userIdStr, {
       path: "/",
-      httpOnly: false,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
       maxAge: 60 * 60 * 24 * 365,
       sameSite: "lax",
     });

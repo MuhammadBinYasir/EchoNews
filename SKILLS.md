@@ -83,8 +83,8 @@ Weights are clamped between `0.00` and `1.00`. The update logic lives in `app/ap
    - Up to 8 headlines are shown (6 from chosen topics, 2 exploratory).
    - Likes/dislikes update client‑side arrays; the next request sends the cumulative lists.
 3. **Finalisation** (`/api/onboarding/route.ts`)
-   - Creates a `User` document with the computed interest map.
-   - Sets `echo_user_id` and `userId` cookies (1‑year TTL).
+   - Creates a `User` document with the computed interest map for a new browser, or updates the existing cookie-linked profile on re-onboarding so its edition archive stays attached.
+   - Sets `echo_user_id` and `userId` HTTP-only cookies (1‑year TTL).
    - Redirects to the home page (`/`).
 ---
 
@@ -165,13 +165,14 @@ http://localhost:3000/today
 - **PDF page fill** – Removed the browser page margins, extended the warm paper background to page edges, and kept readable inset spacing inside the newspaper content.
 - **Print preview follow-up** – The screenshot showed only the top summary printing because nested grid/flex content could be fragmented or clipped. Print styles now force the edition columns and nested flex content into visible, auto-height block flow, remove overflow/height constraints, and paint a full-page warm background behind the content. Verify the updated output in Chrome’s print preview; this environment has not visually rendered that preview.
 - **Feedback integrity** – Event requests use the signed-in cookie and verify that an article belongs to that reader’s edition. The interest meter uses the saved server weight rather than a mismatched client-side estimate.
+- **Profile reuse** – Re-onboarding from a browser with a valid reader cookie updates that reader’s name and interests rather than creating a second profile. Existing editions and event history stay associated with the same user; newly issued reader cookies are HTTP-only.
 - **Print pagination** – Removed whole-section page-break locks, stacked nested grids in print, capped image heights, and kept article cards intact where possible.
 - **Edition archive** – Added `/archive` and `/edition/[date]`, both scoped to the signed-in reader. The archive links to saved editions and uses the existing `listEditions` / `getEditionByDate` helpers. The home and archive views share `lib/edition-page-data.ts` so current and previous editions render consistently.
 - **Daily RSS refresh** – Added `/api/cron/ingest` and `vercel.json` with a daily 01:00 UTC schedule. Configure `CRON_SECRET` in the deployment environment; the scheduled endpoint requires the matching bearer token. `/api/ingest` remains available for manual refresh while developing.
 - **Verification** – `npm run lint` passes with four existing warnings and `npx next build --webpack` passes, including the recent-history schema and onboarding session seed. The environment has no `GEMINI_API_KEY`; live Gemini responses are not verified. Print CSS changes still need a visual check in the local browser's Save as PDF preview.
 
 ## 12. Next Work & Known Limitations
-- **Live verification** – In a local browser, regenerate twice and confirm the article IDs rotate, then reopen onboarding to confirm a fresh session presents a different mix. Recheck Chrome’s PDF preview to confirm all articles print across pages and the warm background reaches the page edges. Add `GEMINI_API_KEY` to `.env.local` (and deployment secrets) to verify live summaries and onboarding tie-breaks.
+- **Live verification** – In a local browser, revisit onboarding with an existing reader cookie and confirm the profile ID and archive are retained, then regenerate twice and confirm the article IDs rotate. Recheck Chrome’s PDF preview to confirm all articles print across pages and the warm background reaches the page edges. Add `GEMINI_API_KEY` to `.env.local` (and deployment secrets) to verify live summaries and onboarding tie-breaks.
 - **Scheduled deployment** – The cron runs only on a deployment platform that honors `vercel.json` schedules. Set `CRON_SECRET` in that environment before enabling scheduled ingestion.
 - **Image CDN restrictions** – Some publishers block hot-linking; the app falls back to a placeholder when the request fails.
 - **Gemini request latency** – Gemini is optional for recommendations (scored ranking is the fallback) and used to generate uncached summaries only when needed; cached summaries avoid repeated calls.
