@@ -18,7 +18,7 @@ export default async function ArchivePage() {
       <div className="max-w-[1100px] mx-auto">
         <header className="flex items-center justify-between border-b border-[#ded7cb] pb-5 mb-8">
           <Link href="/" className="font-serif text-4xl font-bold">Echo<span className="text-[#c0152f]">.</span></Link>
-          <Link href="/" className="text-sm text-[#716c64] hover:text-[#c0152f]">← Today’s edition</Link>
+          <Link href="/today" className="text-sm text-[#716c64] hover:text-[#c0152f]">← Today’s edition</Link>
         </header>
 
         <div className="mb-8">
@@ -49,7 +49,7 @@ export default async function ArchivePage() {
           <div className="bg-[#fcfaf7] border border-[#ded7cb] p-8 text-center">
             <h2 className="font-serif text-2xl">Your first edition is on its way.</h2>
             <p className="text-sm text-[#716c64] mt-2">Once your daily paper is ready, it will be kept here.</p>
-            <Link href="/" className="inline-block mt-5 text-sm text-[#c0152f] underline underline-offset-4">Return to Echo</Link>
+            <Link href="/today" className="inline-block mt-5 text-sm text-[#c0152f] underline underline-offset-4">Return to today’s edition</Link>
           </div>
         )}
       </div>

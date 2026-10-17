@@ -165,7 +165,7 @@ export default function EditionClientView({
 
             {/* Center Logo */}
             <div className="text-center">
-              <Link href="/">
+              <Link href="/today">
                 <span className="font-serif text-[56px] sm:text-[68px] font-bold tracking-tight text-[#1a1917] leading-none">
                   Echo<span className="text-[#c0152f]">.</span>
                 </span>

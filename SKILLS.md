@@ -145,12 +145,14 @@ open http://localhost:3000/api/ingest   # or curl GET /api/ingest
 http://localhost:3000/onboarding
 
 # View today’s edition after onboarding
-http://localhost:3000/
+http://localhost:3000/today
 ```
 ---
 
 ## 11. Implementation Log — 17 October 2026
 - **PDF/print edition** – Added letter-size print styling that retains the newspaper palette and hides navigation and interaction controls. The “Download PDF” action opens the browser print dialog; choose **Save as PDF** there.
+- **Public landing page** – Added a responsive editorial-style product landing page at `/`, with clear onboarding and returning-reader links. The authenticated daily paper now lives at `/today`; onboarding and newspaper navigation point there. The production build passes with both routes.
+- **Landing page expansion** – Added an illustrated “Inside your edition” preview for the lead, quick reads, and discovery sections, plus an accessible expandable FAQ covering personalization, original articles, and PDF saving.
 - **Edition archive** – Added `/archive` and `/edition/[date]`, both scoped to the signed-in reader. The archive links to saved editions and uses the existing `listEditions` / `getEditionByDate` helpers. The home and archive views share `lib/edition-page-data.ts` so current and previous editions render consistently.
 - **Daily RSS refresh** – Added `/api/cron/ingest` and `vercel.json` with a daily 01:00 UTC schedule. Configure `CRON_SECRET` in the deployment environment; the scheduled endpoint requires the matching bearer token. `/api/ingest` remains available for manual refresh while developing.
 - **Verification** – `npx next build --webpack` passes (including TypeScript); the build connected to the configured MongoDB. `npm run lint` passes with six pre-existing warnings and no errors. The local HTTP smoke check could not run because this environment denied local socket access, so interactive route behavior still needs a local browser check.

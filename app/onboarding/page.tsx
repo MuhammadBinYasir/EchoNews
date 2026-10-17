@@ -320,7 +320,7 @@ const OnboardingPage = () => {
 
       setSuccess(true);
       setTimeout(() => {
-        router.push("/");
+      router.push("/today");
       }, 1400);
     } catch (err: unknown) {
       console.error(err);
