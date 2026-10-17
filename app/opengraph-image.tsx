@@ -56,8 +56,9 @@ export default function OpenGraphImage() {
               <span style={{ fontSize: 88, lineHeight: 1, fontWeight: 700, letterSpacing: -7 }}>Echo</span>
               <span style={{ color: "#c0152f", fontSize: 88, lineHeight: 1, fontWeight: 700 }}>.</span>
             </div>
-            <div style={{ fontSize: 52, lineHeight: 1.08, letterSpacing: -1 }}>
-              The world,<br />edited for you.
+            <div style={{ display: "flex", flexDirection: "column", fontSize: 52, lineHeight: 1.08, letterSpacing: -1 }}>
+              <span>The world,</span>
+              <span>edited for you.</span>
             </div>
             <div
               style={{
