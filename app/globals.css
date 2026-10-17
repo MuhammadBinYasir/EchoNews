@@ -1,26 +1,64 @@
 @import "tailwindcss";
+@config "../tailwind.config.ts";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f6f1e8;
+  --foreground: #1a1917;
+
+  /* Primary Crimson */
+  --color-primary: #c0152f;
+  --color-primary-hover: #a31126;
+  --color-primary-dark: #841021;
+  --color-primary-light: #fae9e7;
+  --color-primary-subtle: #fcedeb;
+  --color-primary-border: #ebc2bc;
+
+  /* Secondary Paper & Ink */
+  --color-secondary: #f5f0e6;
+  --color-secondary-paper: #f7f3ea;
+  --color-secondary-cream: #f4efe6;
+  --color-secondary-card: #ffffff;
+  --color-secondary-border: #ded7cb;
+  --color-secondary-line: #e5ded3;
+  --color-secondary-dark: #1a1917;
+  --color-secondary-charcoal: #2a2723;
+  --color-secondary-muted: #716c64;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-dark: var(--color-primary-dark);
+  --color-primary-light: var(--color-primary-light);
+  --color-primary-subtle: var(--color-primary-subtle);
+  --color-primary-border: var(--color-primary-border);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-secondary: var(--color-secondary);
+  --color-secondary-paper: var(--color-secondary-paper);
+  --color-secondary-cream: var(--color-secondary-cream);
+  --color-secondary-card: var(--color-secondary-card);
+  --color-secondary-border: var(--color-secondary-border);
+  --color-secondary-line: var(--color-secondary-line);
+  --color-secondary-dark: var(--color-secondary-dark);
+  --color-secondary-charcoal: var(--color-secondary-charcoal);
+  --color-secondary-muted: var(--color-secondary-muted);
+
+  --font-sans: var(--font-geist-sans), Inter, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
+  --font-serif: var(--font-serif), Newsreader, Georgia, serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar and subtle transitions */
+input:focus {
+  outline: none;
 }
