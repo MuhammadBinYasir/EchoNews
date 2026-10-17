@@ -1,26 +1,205 @@
 @import "tailwindcss";
+@config "../tailwind.config.ts";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f6f1e8;
+  --foreground: #1a1917;
+
+  /* Primary Crimson */
+  --color-primary: #c0152f;
+  --color-primary-hover: #a31126;
+  --color-primary-dark: #841021;
+  --color-primary-light: #fae9e7;
+  --color-primary-subtle: #fcedeb;
+  --color-primary-border: #ebc2bc;
+
+  /* Secondary Paper & Ink */
+  --color-secondary: #f5f0e6;
+  --color-secondary-paper: #f7f3ea;
+  --color-secondary-cream: #f4efe6;
+  --color-secondary-card: #ffffff;
+  --color-secondary-border: #ded7cb;
+  --color-secondary-line: #e5ded3;
+  --color-secondary-dark: #1a1917;
+  --color-secondary-charcoal: #2a2723;
+  --color-secondary-muted: #716c64;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-primary: var(--color-primary);
+  --color-primary-hover: var(--color-primary-hover);
+  --color-primary-dark: var(--color-primary-dark);
+  --color-primary-light: var(--color-primary-light);
+  --color-primary-subtle: var(--color-primary-subtle);
+  --color-primary-border: var(--color-primary-border);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-secondary: var(--color-secondary);
+  --color-secondary-paper: var(--color-secondary-paper);
+  --color-secondary-cream: var(--color-secondary-cream);
+  --color-secondary-card: var(--color-secondary-card);
+  --color-secondary-border: var(--color-secondary-border);
+  --color-secondary-line: var(--color-secondary-line);
+  --color-secondary-dark: var(--color-secondary-dark);
+  --color-secondary-charcoal: var(--color-secondary-charcoal);
+  --color-secondary-muted: var(--color-secondary-muted);
+
+  --font-sans: var(--font-geist-sans), Inter, sans-serif;
+  --font-mono: var(--font-geist-mono), monospace;
+  --font-serif: var(--font-serif), Newsreader, Georgia, serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom scrollbar and subtle transitions */
+input:focus {
+  outline: none;
+}
+
+@media (max-width: 639px) {
+  .echo-actions a,
+  .echo-actions button {
+    display: inline-flex;
+    min-height: 2.25rem;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+
+@media print {
+  html,
+  body {
+    background: #f5f0e6 !important;
+    background-color: #f5f0e6 !important;
+    color: #1a1917 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  body {
+    display: block !important;
+    font-size: 10pt;
+    margin: 0 !important;
+  }
+
+  .echo-document {
+    min-height: 0 !important;
+    padding-bottom: 0 !important;
+    width: 100% !important;
+    background: #f5f0e6 !important;
+  }
+
+  .echo-document::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background: #f5f0e6 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  .echo-paper {
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 12mm 14mm !important;
+    box-sizing: border-box !important;
+    background: #f5f0e6 !important;
+  }
+
+  .echo-print-grid {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .echo-print-grid > * {
+    width: 100% !important;
+    display: block !important;
+    flex: none !important;
+    padding: 0 !important;
+    margin: 0 0 0.25in !important;
+  }
+
+  .echo-paper section,
+  .echo-paper article,
+  .echo-paper .echo-print-grid,
+  .echo-paper .echo-print-grid > * {
+    visibility: visible !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    content-visibility: visible !important;
+  }
+
+  .echo-paper .flex {
+    display: block !important;
+  }
+
+  .echo-paper .grid {
+    display: block !important;
+  }
+
+  .echo-paper .grid > * {
+    width: 100% !important;
+  }
+
+  .echo-actions,
+  button,
+  header.print\:hidden {
+    display: none !important;
+  }
+
+  article {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  section {
+    break-inside: auto;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    break-after: avoid-page;
+    page-break-after: avoid;
+  }
+
+  img {
+    width: 100% !important;
+    height: auto !important;
+    max-height: 2.7in;
+    object-fit: cover;
+  }
+
+  .echo-paper [class*="aspect-"] {
+    height: auto !important;
+    aspect-ratio: auto !important;
+    overflow: visible !important;
+  }
+
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+
+  footer {
+    margin-top: 0.25in !important;
+  }
 }
