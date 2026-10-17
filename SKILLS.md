@@ -39,3 +39,41 @@ Purpose: stores LLM outputs so the same request is never paid for twice.
 Written: after each LLM call (e.g. "Today in 3 Things", summaries).
 Read: before each LLM call. If the key exists, return the cached response.
 Notes: with MOCK_LLM=true, skip the API entirely and return fake data.
+
+/* ------------------------------------------------------------------ */
+/* Onboarding Flow & Checkpoints                                      */
+/* ------------------------------------------------------------------ */
+
+Route: /onboarding (app/onboarding/page.tsx)
+Flow: 2-step editorial onboarding. No user record is written to MongoDB until Step 2 completes.
+
+- Step 1 of 2: Masthead & Topics
+  - Asks for reader's name ("What should we call you?").
+  - User selects 3 or more topics from TOPICS (tech, ai, world, business, sports, science, health, culture).
+  - State (name, selected topics) is held in client memory; clicking "Find my headlines →" transitions to Step 2.
+
+- Step 2 of 2: Tapping Headlines & Taste Calibration
+  - Fetches 8 candidate articles via POST /api/onboarding/articles:
+    * Curated by `lib/curate-onboarding.ts`: strictly filters for articles with real publisher images and rich snippets (eliminating text-only/noise posts).
+    * Relevancy scoring: scores title and snippet against topic-specific editorial keywords to rank the most compelling headlines.
+    * High-definition images: decodes XML entities (e.g. `&#038;` -> `&`) and removes aggressive thumbnail downscaling / crop params (e.g. `crop=0,0,100,100`), serving the publisher's full-resolution image with `referrerPolicy="no-referrer"`.
+    * 6 articles from the user's selected topics (balanced distribution).
+    * 2 articles from non-selected topics ("room for a little surprise" / "Break the Echo").
+    * Local Ollama LLM (`qwen3.5:4b` at http://127.0.0.1:11434) is queried to fine-tune headline selection, with fast, resilient fallback to algorithmic relevance ranking.
+  - User reviews headlines one-by-one with "Dislike article" or "Like article" (or "Skip for now").
+  - Card stack features an editorial newspaper design with live publisher photography, source attribution, reading time, and topic tags.
+
+- Initial Interest Weights & Single DB Write:
+  - When all headlines are reviewed (or user skips), client sends POST /api/onboarding with { name, topics, likedArticleIds, dislikedArticleIds }.
+  - Formula:
+    * Each selected topic gets an initial weight of 0.70.
+    * Every other topic gets an initial weight of 0.20.
+    * For each liked article, its topic is looked up and receives +0.15 (clamped to max 1.00).
+  - Creates the User in MongoDB and logs initial Event records for the learning loop.
+  - Sets `echo_user_id` and `userId` cookies (1 year duration, path: "/").
+
+- Theme & Design System:
+  - Configured in `tailwind.config.ts` and `app/globals.css`.
+  - Primary brand: Crimson `#c0152f` (hover: `#a31126`, light: `#fae9e7`, border: `#ebc2bc`).
+  - Secondary brand: Newspaper cream/linen `#f5f0e6`, borders `#ded7cb`, text `#1a1917`, muted `#716c64`.
+  - Typography: Newsreader serif (`--font-serif`) for masthead and headlines; Geist sans for clean labels.

@@ -55,21 +55,55 @@ function trimTo(s: string, max: number): string {
     return cut.slice(0, cut.lastIndexOf(" ") > 100 ? cut.lastIndexOf(" ") : max).trim() + "…";
 }
 
-function firstUrl(v: CustomItem["mediaContent"]): string | undefined {
-    const item = Array.isArray(v) ? v[0] : v;
-    return item?.$?.url;
+function cleanImageUrl(raw: string | undefined): string | null {
+    if (!raw) return null;
+    let url = raw
+        .replace(/&#0*38;/gi, "&")
+        .replace(/&amp;/gi, "&")
+        .replace(/&#39;/gi, "'")
+        .replace(/&quot;/gi, '"')
+        .trim();
+
+    if (!/^https?:\/\//i.test(url)) return null;
+
+    // Remove WordPress/CDN aggressive downscaling params if present
+    url = url.replace(/(\?|&)(w|resize|fit)=\d+(%2C\d+)?/gi, "");
+    return url;
 }
 
 function extractImage(item: Parser.Item & CustomItem): string | null {
-    const candidates = [
-        item.enclosure?.type?.startsWith("image") ? item.enclosure.url : undefined,
-        firstUrl(item.mediaContent),
-        firstUrl(item.mediaThumbnail),
-        // fall back to the first <img> inside the HTML body
-        (item.contentEncoded || item.content || "").match(/<img[^>]+src=["']([^"']+)["']/i)?.[1],
-    ];
-    const found = candidates.find((u) => u && /^https?:\/\//i.test(u));
-    return found ?? null;
+    // 1. Enclosure (often full-res original)
+    if (item.enclosure?.type?.startsWith("image") && item.enclosure.url) {
+        const cleaned = cleanImageUrl(item.enclosure.url);
+        if (cleaned) return cleaned;
+    }
+
+    // 2. Media Content (inspect array for largest or primary item)
+    if (item.mediaContent) {
+        const list = Array.isArray(item.mediaContent) ? item.mediaContent : [item.mediaContent];
+        for (const m of list) {
+            const u = cleanImageUrl(m?.$?.url);
+            if (u) return u;
+        }
+    }
+
+    // 3. HTML body image
+    const bodyImg = (item.contentEncoded || item.content || "").match(/<img[^>]+src=["']([^"']+)["']/i)?.[1];
+    if (bodyImg) {
+        const cleaned = cleanImageUrl(bodyImg);
+        if (cleaned) return cleaned;
+    }
+
+    // 4. Media Thumbnail as fallback
+    if (item.mediaThumbnail) {
+        const list = Array.isArray(item.mediaThumbnail) ? item.mediaThumbnail : [item.mediaThumbnail];
+        for (const m of list) {
+            const u = cleanImageUrl(m?.$?.url);
+            if (u) return u;
+        }
+    }
+
+    return null;
 }
 
 /* ------------------------------------------------------------------ */
