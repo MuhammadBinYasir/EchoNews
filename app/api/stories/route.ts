@@ -7,7 +7,6 @@ import { extractInterestsMap } from "@/lib/format";
 import { rankArticlesByPreference } from "@/lib/recommendation";
 
 const STORY_WINDOW_DAYS = 7;
-const STORY_LIMIT = 10;
 
 export async function GET() {
   await connection();
@@ -47,28 +46,13 @@ export async function GET() {
       topic,
       rankArticlesByPreference(articleGroups[index], interests),
     ]));
-    const stories: (typeof articleGroups)[number][number][] = [];
-    const sourceCounts = new Map<string, number>();
-
-    // Round-robin in preference order: the highest-interest category appears
-    // first, while every preferred category gets a chance before repeats.
-    while (stories.length < STORY_LIMIT) {
-      let addedStory = false;
-      for (const topic of preferredTopics) {
-        if (stories.length >= STORY_LIMIT) break;
-        const topicStories = storiesByTopic.get(topic);
-        if (!topicStories?.length) continue;
-        const publisherIndex = topicStories.findIndex((article) =>
-          (sourceCounts.get(article.source.toLowerCase()) || 0) < 2
-        );
-        const [article] = topicStories.splice(publisherIndex < 0 ? 0 : publisherIndex, 1);
-        stories.push(article);
-        const source = article.source.toLowerCase();
-        sourceCounts.set(source, (sourceCounts.get(source) || 0) + 1);
-        addedStory = true;
-      }
-      if (!addedStory) break;
-    }
+    // Show only the top ranked article from each preferred topic. Since
+    // preferredTopics is sorted by interest, categories also appear in order
+    // from the reader's strongest preference to the weakest.
+    const stories = preferredTopics.flatMap((topic) => {
+      const topStory = storiesByTopic.get(topic)?.[0];
+      return topStory ? [topStory] : [];
+    });
 
     return NextResponse.json({
       stories: stories.map((article) => ({
