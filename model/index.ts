@@ -27,6 +27,7 @@ const UserSchema = new Schema(
     {
         name: { type: String, required: true, trim: true },
         interests: { type: Map, of: Number, default: {} },
+        initialInterests: { type: Map, of: Number, default: undefined },
         createdAt: { type: Date, default: Date.now },
     },
     { versionKey: false }
@@ -90,6 +91,7 @@ const EventSchema = new Schema(
         editionId: { type: Schema.Types.ObjectId, ref: "Edition" },
         topic: { type: String, enum: TOPICS, required: true }, // copied for easy learning
         type: { type: String, enum: EVENT_TYPES, required: true },
+        origin: { type: String, enum: ["onboarding", "feedback"], default: "feedback" },
         ts: { type: Date, default: Date.now },
     },
     { versionKey: false }

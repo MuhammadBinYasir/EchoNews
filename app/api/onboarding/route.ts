@@ -71,13 +71,14 @@ export async function POST(req: NextRequest) {
     const existingUser = existingUserId && mongoose.isValidObjectId(existingUserId)
       ? await User.findByIdAndUpdate(
           existingUserId,
-          { $set: { name: name.trim(), interests: weights } },
+          { $set: { name: name.trim(), interests: weights, initialInterests: weights } },
           { new: true, runValidators: true }
         )
       : null;
     const user = existingUser ?? await User.create({
       name: name.trim(),
       interests: weights,
+      initialInterests: weights,
       createdAt: new Date(),
     });
 
@@ -92,6 +93,7 @@ export async function POST(req: NextRequest) {
           articleId: a._id,
           topic: a.topic,
           type: "like",
+          origin: "onboarding",
           ts: new Date(),
         });
       }
@@ -109,6 +111,7 @@ export async function POST(req: NextRequest) {
             articleId: a._id,
             topic: a.topic,
             type: "skip",
+            origin: "onboarding",
             ts: new Date(),
           });
         }

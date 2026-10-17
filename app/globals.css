@@ -63,6 +63,16 @@ input:focus {
   outline: none;
 }
 
+@media (max-width: 639px) {
+  .echo-actions a,
+  .echo-actions button {
+    display: inline-flex;
+    min-height: 2.25rem;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
 @page {
   size: A4 portrait;
   margin: 0;

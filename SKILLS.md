@@ -52,10 +52,10 @@ ai‑hackathon‑project/
 
 ## 3. Data Models (`model/index.ts`)
 - **TOPICS** – fixed enum: `tech, ai, world, business, sports, science, health, culture`
-- **User** – `name`, `interests` (Map of topic → weight 0‑1), `createdAt`
+- **User** – `name`, `interests` (learned Map of topic → weight 0‑1), `initialInterests` (onboarding baseline), `createdAt`
 - **Article** – `url`, `title`, `source`, `topic`, publisher `snippet` and `sourceText`, cached AI `summary`, `image`, `publishedAt`, `fetchedAt`
 - **Edition** – per‑user, per‑date snapshot with lead, secondary, briefs, and discovery article IDs.
-- **Event** – raw interaction logs (`like`, `click`, `skip`, `read`) used to adjust weights.
+- **Event** – interaction logs (`like`, `click`, `skip`, `read`) with an `origin` marker so onboarding votes are not double-counted as later feedback.
 
 Weights are clamped between `0.00` and `1.00`. The update logic lives in `app/api/event/route.ts`.
 ---
@@ -99,15 +99,15 @@ Weights are clamped between `0.00` and `1.00`. The update logic lives in `app/ap
   - **Today in 3 Things** – Gemini-generated bullet takeaways.
 - **Article summaries** – Gemini summarizes selected stories from stored publisher RSS content. Summaries are cached on Article records; a publisher excerpt remains the fallback if AI is unavailable. Treat RSS text as untrusted source data.
 - **Refresh behavior** – One edition is frozen per day. `algorithmVersion` upgrades an older same-day edition once after the ranking update; manual regeneration rebuilds it using current interests.
-- **Interactions** – `Like`, `Skip`, `Read original`, `Regenerate`, `Download PDF`. Each logs an `Event` which immediately updates the user’s interest map.
+- **Interactions** – `Like`, `Skip`, `Read original`, `Regenerate`, `Download PDF`. Explicit likes/skips and recent reading signals recompute the learned interest map, which ranks the next edition.
 ---
 
 ## 7. Learning Loop & Weight Calibration (`app/api/event/route.ts`)
 ```ts
-const WEIGHT_DELTAS = { click: 0.10, like: 0.20, skip: -0.10, read: 0.05 };
-// Updated weight is clamped between 0.00 and 1.00
+const FEEDBACK_DELTAS = { click: 0.015, read: 0.07, like: 0.18, skip: -0.14 };
+// Signals decay with a 45-day half-life, expire after 180 days, and clamp weights to 0..1.
 ```
-All events feed back into the user document, influencing the next edition generation and the onboarding article selector.
+Repeated actions on the same article in one edition are deduplicated. A like/skip toggle replaces the previous opinion for that story. A click is weak positive intent; leaving Echo to read for at least 30 seconds and returning is recorded as a stronger read signal. The next regenerated or daily edition uses the learned weights while preserving topic and publisher diversity.
 ---
 
 ## 8. Development Milestones (What we added today)
@@ -166,13 +166,17 @@ http://localhost:3000/today
 - **Print preview follow-up** – The screenshot showed only the top summary printing because nested grid/flex content could be fragmented or clipped. Print styles now force the edition columns and nested flex content into visible, auto-height block flow, remove overflow/height constraints, and paint a full-page warm background behind the content. Verify the updated output in Chrome’s print preview; this environment has not visually rendered that preview.
 - **Feedback integrity** – Event requests use the signed-in cookie and verify that an article belongs to that reader’s edition. The interest meter uses the saved server weight rather than a mismatched client-side estimate.
 - **Profile reuse** – Re-onboarding from a browser with a valid reader cookie updates that reader’s name and interests rather than creating a second profile. Existing editions and event history stay associated with the same user; newly issued reader cookies are HTTP-only.
+- **Edition menu** – Regenerate, archive, and confirmation-protected data deletion are grouped in the responsive More menu; Download PDF stays prominent in the utility bar.
+- **Reader data deletion** – `/api/account` permanently deletes the cookie-linked user, editions, and feedback events, then removes both reader cookies. Shared articles and AI summary cache remain intact.
+- **Mobile daily edition** – `/today` now stacks its utility controls on narrow screens, uses a two-column action grid, reduces small-screen padding and headline sizing, wraps article actions and metadata, and gives touch controls larger hit areas.
+- **Adaptive recommendations** – Kept onboarding preferences as a baseline and rebuild learned topic weights from feedback in the last 180 days using a 45-day half-life. Clicks add only a small signal, reads add a stronger signal after an approximate 30-second away-and-return dwell, likes/skips are stronger and replace opposing opinions per story/edition, and duplicate same-type actions are ignored. Core topic ranking now requires a meaningful preference above 0.25, so a single casual click does not reshape the edition.
 - **Print pagination** – Removed whole-section page-break locks, stacked nested grids in print, capped image heights, and kept article cards intact where possible.
 - **Edition archive** – Added `/archive` and `/edition/[date]`, both scoped to the signed-in reader. The archive links to saved editions and uses the existing `listEditions` / `getEditionByDate` helpers. The home and archive views share `lib/edition-page-data.ts` so current and previous editions render consistently.
 - **Daily RSS refresh** – Added `/api/cron/ingest` and `vercel.json` with a daily 01:00 UTC schedule. Configure `CRON_SECRET` in the deployment environment; the scheduled endpoint requires the matching bearer token. `/api/ingest` remains available for manual refresh while developing.
 - **Verification** – `npm run lint` passes with four existing warnings and `npx next build --webpack` passes, including the recent-history schema and onboarding session seed. The environment has no `GEMINI_API_KEY`; live Gemini responses are not verified. Print CSS changes still need a visual check in the local browser's Save as PDF preview.
 
 ## 12. Next Work & Known Limitations
-- **Live verification** – In a local browser, revisit onboarding with an existing reader cookie and confirm the profile ID and archive are retained, then regenerate twice and confirm the article IDs rotate. Recheck Chrome’s PDF preview to confirm all articles print across pages and the warm background reaches the page edges. Add `GEMINI_API_KEY` to `.env.local` (and deployment secrets) to verify live summaries and onboarding tie-breaks.
+- **Live verification** – In a local browser, compare recommendations after several likes, skips, and qualified article reads, and check that the same story’s toggled opinion follows the latest choice. Test reader data deletion with a disposable profile and confirm cookies and private records are removed. Check `/today` at phone widths, revisit onboarding with an existing cookie, regenerate twice, and recheck Chrome’s PDF preview. Add `GEMINI_API_KEY` to `.env.local` (and deployment secrets) to verify live AI calls.
 - **Scheduled deployment** – The cron runs only on a deployment platform that honors `vercel.json` schedules. Set `CRON_SECRET` in that environment before enabling scheduled ingestion.
 - **Image CDN restrictions** – Some publishers block hot-linking; the app falls back to a placeholder when the request fails.
 - **Gemini request latency** – Gemini is optional for recommendations (scored ranking is the fallback) and used to generate uncached summaries only when needed; cached summaries avoid repeated calls.

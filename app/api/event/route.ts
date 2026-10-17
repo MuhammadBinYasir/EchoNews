@@ -2,14 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { connectDB } from "@/lib/mongo";
 import { Event, User, Article, Edition, EVENT_TYPES, type EventType, type Topic } from "@/model";
+import { calculateLearnedInterests } from "@/lib/recommendation";
+import { extractInterestsMap } from "@/lib/format";
 import mongoose from "mongoose";
 
-const WEIGHT_DELTAS = {
-  click: 0.1,
-  like: 0.2,
-  skip: -0.1,
-  read: 0.05,
-} as const;
+const FEEDBACK_WINDOW_DAYS = 180;
 
 export async function POST(req: NextRequest) {
   try {
@@ -54,28 +51,61 @@ export async function POST(req: NextRequest) {
 
     const topic = article.topic as Topic;
 
-    // 1. Record event in MongoDB
-    await Event.create({
-      userId,
-      articleId,
-      editionId,
-      topic,
-      type: type as EventType,
-      ts: new Date(),
-    });
-
-    // 2. Update user interests weight with clamping between 0.0 and 1.0
-    const delta = WEIGHT_DELTAS[type as keyof typeof WEIGHT_DELTAS] || 0;
-    let weight = 0.2;
-    if (user.interests) {
-      const current = user.interests.get(topic) ?? 0.2;
-      const updated = Math.max(0.0, Math.min(1.0, parseFloat((current + delta).toFixed(2))));
-      user.interests.set(topic, updated);
-      weight = updated;
-      await user.save();
+    // A repeated click/read should not inflate preference. A like/skip toggle
+    // replaces the opposite opinion for this story in this edition.
+    if (type === "like" || type === "skip") {
+      await Event.deleteMany({
+        userId,
+        articleId,
+        editionId,
+        type: type === "like" ? "skip" : "like",
+        origin: { $ne: "onboarding" },
+      });
+    }
+    const alreadyRecorded = await Event.exists({ userId, articleId, editionId, type });
+    if (!alreadyRecorded) {
+      await Event.create({
+        userId,
+        articleId,
+        editionId,
+        topic,
+        type: type as EventType,
+        origin: "feedback",
+        ts: new Date(),
+      });
     }
 
-    return NextResponse.json({ success: true, topic, delta, weight: Math.round(weight * 100) });
+    // Rebuild preferences from the onboarding baseline plus recent, decayed
+    // signals. A light article click matters less than a like or a qualified read.
+    const savedBaseline = extractInterestsMap(user.initialInterests);
+    const baseline = Object.keys(savedBaseline).length
+      ? savedBaseline
+      : extractInterestsMap(user.interests);
+    if (!Object.keys(savedBaseline).length) user.set("initialInterests", baseline);
+
+    const cutoff = new Date(Date.now() - FEEDBACK_WINDOW_DAYS * 24 * 60 * 60 * 1000);
+    const feedback = await Event.find({
+      userId,
+      origin: { $ne: "onboarding" },
+      ts: { $gte: cutoff },
+    })
+      .select("articleId editionId topic type ts")
+      .sort({ ts: -1 })
+      .limit(2000)
+      .lean();
+    const learned = calculateLearnedInterests(baseline, feedback);
+    for (const [learnedTopic, learnedWeight] of Object.entries(learned)) {
+      user.interests?.set(learnedTopic, learnedWeight);
+    }
+    await user.save();
+
+    const deltaByType: Record<EventType, number> = { click: 0.015, read: 0.07, like: 0.18, skip: -0.14 };
+    return NextResponse.json({
+      success: true,
+      topic,
+      delta: deltaByType[type as EventType],
+      weight: Math.round((user.interests?.get(topic) ?? 0.2) * 100),
+    });
   } catch (err: unknown) {
     console.error("Failed to log event:", err);
     return NextResponse.json(
