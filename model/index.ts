@@ -108,6 +108,8 @@ const EventSchema = new Schema(
     { versionKey: false }
 );
 EventSchema.index({ userId: 1, ts: -1 });
+EventSchema.index({ userId: 1, editionId: 1, articleId: 1, type: 1 });
+EventSchema.index({ userId: 1, articleId: 1, type: 1, origin: 1 });
 
 /* ------------------------------------------------------------------ */
 /* LlmCache  (never pay twice for the same prompt)                     */

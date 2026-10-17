@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { connectDB } from "@/lib/mongo";
 import { User, Article, Edition, Event, TOPICS } from "@/model";
 import { generateWithGemini } from "@/lib/gemini";
@@ -83,6 +84,23 @@ async function enrichEditorialContent(articles: ArticleForAi[], includeDigest: b
   return { summaries, threeThings };
 }
 
+function scheduleSummaryEnrichment(articles: ArticleForAi[]) {
+  if (!articles.length || articles.every((article) => Boolean(article.summary?.trim()))) return;
+  after(() => {
+    void enrichEditorialContent(articles, false);
+  });
+}
+
+function layoutArticles(layout: {
+  lead?: ArticleForAi | null;
+  secondary?: ArticleForAi[];
+  briefs?: ArticleForAi[];
+  echo?: ArticleForAi[];
+}) {
+  return [layout.lead, ...(layout.secondary || []), ...(layout.briefs || []), ...(layout.echo || [])]
+    .filter((article): article is ArticleForAi => Boolean(article));
+}
+
 export async function getOrCreateTodayEdition(userId: string, forceRegenerate = false) {
   await connectDB();
 
@@ -107,11 +125,7 @@ export async function getOrCreateTodayEdition(userId: string, forceRegenerate = 
         briefs?: ArticleForAi[];
         echo?: ArticleForAi[];
       };
-      await enrichEditorialContent(
-        [layout.lead, ...(layout.secondary || []), ...(layout.briefs || []), ...(layout.echo || [])]
-          .filter((article): article is ArticleForAi => Boolean(article)),
-        false
-      );
+      scheduleSummaryEnrichment(layoutArticles(layout));
       return { user, edition: existing };
     }
   }
@@ -246,7 +260,7 @@ export async function getOrCreateTodayEdition(userId: string, forceRegenerate = 
     echoCandidates = [...echoCandidates, ...fallback.filter((article) => !known.has(article._id.toString()))];
   }
 
-  if (mainCandidates.length === 0) return null;
+  if (mainCandidates.length === 0) return { user, edition: null };
 
   const rankedMainCandidates = rankArticlesByPreference(mainCandidates, interestsMap);
   const rankedEchoCandidates = rankArticlesByPreference(echoCandidates, interestsMap);
@@ -423,11 +437,7 @@ export async function getEditionByDate(userId: string, date: string) {
     briefs?: ArticleForAi[];
     echo?: ArticleForAi[];
   };
-  await enrichEditorialContent(
-    [layout.lead, ...(layout.secondary || []), ...(layout.briefs || []), ...(layout.echo || [])]
-      .filter((article): article is ArticleForAi => Boolean(article)),
-    false
-  );
+  scheduleSummaryEnrichment(layoutArticles(layout));
   const user = await User.findById(userId).lean();
   if (!user) return null;
   return { user, edition };
@@ -457,7 +467,8 @@ export async function listEditions(userId: string) {
   await connectDB();
   const editions = await Edition.find({ userId })
     .sort({ date: -1 })
-    .populate('layout.lead')
+    .select("date number layout.lead")
+    .populate("layout.lead", "title image")
     .lean();
   return editions.map((ed) => {
     const lead = ed.layout?.lead as unknown as { title?: string; image?: string } | null;

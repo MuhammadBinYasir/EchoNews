@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { connectDB } from "@/lib/mongo";
 import { User, Article, Event, TOPICS, Topic } from "@/model";
-import mongoose from "mongoose";
+import { getReaderIdCandidates } from "@/lib/reader-cookies";
 
 export async function POST(req: NextRequest) {
   try {
@@ -66,9 +66,18 @@ export async function POST(req: NextRequest) {
     // This keeps editions and feedback attached to the same user instead of
     // creating an unreachable duplicate profile on every onboarding run.
     const cookieStore = await cookies();
-    const existingUserId =
-      cookieStore.get("echo_user_id")?.value || cookieStore.get("userId")?.value;
-    const existingUser = existingUserId && mongoose.isValidObjectId(existingUserId)
+    const existingUserIds = getReaderIdCandidates(
+      cookieStore.get("echo_user_id")?.value,
+      cookieStore.get("userId")?.value,
+    );
+    let existingUserId: string | null = null;
+    for (const candidateId of existingUserIds) {
+      if (await User.exists({ _id: candidateId })) {
+        existingUserId = candidateId;
+        break;
+      }
+    }
+    const existingUser = existingUserId
       ? await User.findByIdAndUpdate(
           existingUserId,
           { $set: { name: name.trim(), interests: weights, initialInterests: weights } },

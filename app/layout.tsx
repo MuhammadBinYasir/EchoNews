@@ -18,10 +18,11 @@ const newsreader = Newsreader({
   style: ["normal", "italic"],
 });
 
+const siteOrigin = process.env.NEXT_PUBLIC_SITE_URL
+  || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+
 export const metadata: Metadata = {
-  metadataBase: process.env.NEXT_PUBLIC_SITE_URL
-    ? new URL(process.env.NEXT_PUBLIC_SITE_URL)
-    : undefined,
+  metadataBase: new URL(siteOrigin),
   title: {
     default: "Echo — Your Daily, Reimagined",
     template: "%s | Echo",

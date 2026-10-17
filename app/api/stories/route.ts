@@ -40,16 +40,25 @@ export async function GET(request: NextRequest) {
     }
 
     const cutoff = new Date(Date.now() - STORY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-    const articleGroups = await Promise.all(preferredTopics.map((topic) =>
-      Article.find({ topic, publishedAt: { $gte: cutoff } })
-        .sort({ publishedAt: -1 })
-        .limit(15)
-        .select("title source topic summary snippet image url publishedAt")
-        .lean()
-    ));
-    const storiesByTopic = new Map(preferredTopics.map((topic, index) => [
+    const recentArticles = await Article.find({
+      topic: { $in: preferredTopics },
+      publishedAt: { $gte: cutoff },
+    })
+      .sort({ publishedAt: -1 })
+      .select("title source topic summary snippet image url publishedAt")
+      .lean();
+    const articleGroups = new Map<string, typeof recentArticles>();
+    for (const article of recentArticles) {
+      const group = articleGroups.get(article.topic);
+      if (group) {
+        if (group.length < 15) group.push(article);
+      } else {
+        articleGroups.set(article.topic, [article]);
+      }
+    }
+    const storiesByTopic = new Map(preferredTopics.map((topic) => [
       topic,
-      rankArticlesByPreference(articleGroups[index], interests),
+      rankArticlesByPreference(articleGroups.get(topic) || [], interests),
     ]));
     // Show only the top ranked article from each preferred topic. Since
     // preferredTopics is sorted by interest, categories also appear in order

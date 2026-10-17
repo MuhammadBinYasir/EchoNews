@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { getEditionFeedback, getOrCreateTodayEdition, listEditions } from "@/lib/edition";
 import EditionClientView from "../EditionClientView";
+import EmptyLibraryNotice from "../EmptyLibraryNotice";
 import { toEditionPageData } from "@/lib/edition-page-data";
 import { getReaderIdCandidates } from "@/lib/reader-cookies";
 
@@ -29,6 +30,10 @@ export default async function Home() {
 
     const archivedEditions = await listEditions(userId);
     if (archivedEditions.length) redirect(`/edition/${archivedEditions[0].date}`);
+    if (result?.user) {
+      const name = typeof result.user.name === "string" ? result.user.name : "Reader";
+      return <EmptyLibraryNotice readerName={name} canManuallyRefresh={process.env.NODE_ENV !== "production"} />;
+    }
   }
 
   redirect("/onboarding");

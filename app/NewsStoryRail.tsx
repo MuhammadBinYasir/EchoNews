@@ -70,13 +70,16 @@ export default function NewsStoryRail({ readerId }: { readerId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ articleId: story.id, type, readerId }),
       });
-      if (!res.ok) throw new Error("Feedback request failed");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || "Feedback request failed");
+      }
       setFeedbackError("");
       if (type === "like" || type === "skip") {
         setFeedback((current) => ({ ...current, [story.id]: type }));
       }
-    } catch {
-      setFeedbackError("Could not save your feedback. Please try again.");
+    } catch (err) {
+      setFeedbackError(err instanceof Error ? err.message : "Could not save your feedback. Please try again.");
     }
   }, [readerId]);
 
