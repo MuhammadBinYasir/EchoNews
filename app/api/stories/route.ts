@@ -1,21 +1,26 @@
-import { connection, NextResponse } from "next/server";
+import { connection, NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import mongoose from "mongoose";
 import { connectDB } from "@/lib/mongo";
-import { Article, TOPICS, User } from "@/model";
+import { Article, Event, TOPICS, User } from "@/model";
 import { extractInterestsMap } from "@/lib/format";
 import { rankArticlesByPreference } from "@/lib/recommendation";
+import { getReaderIdCandidates } from "@/lib/reader-cookies";
 
 const STORY_WINDOW_DAYS = 7;
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   await connection();
   try {
     const cookieStore = await cookies();
-    const userId =
-      cookieStore.get("echo_user_id")?.value || cookieStore.get("userId")?.value;
+    const userIds = getReaderIdCandidates(
+      cookieStore.get("echo_user_id")?.value,
+      cookieStore.get("userId")?.value,
+    );
+    const requestedReaderId = request.nextUrl.searchParams.get("readerId");
+    const userId = requestedReaderId || userIds[0];
 
-    if (!userId || !mongoose.isValidObjectId(userId)) {
+    if (!userId || !mongoose.isValidObjectId(userId) || !userIds.includes(userId)) {
       return NextResponse.json({ error: "Reader profile not found." }, { status: 401 });
     }
 
@@ -35,16 +40,25 @@ export async function GET() {
     }
 
     const cutoff = new Date(Date.now() - STORY_WINDOW_DAYS * 24 * 60 * 60 * 1000);
-    const articleGroups = await Promise.all(preferredTopics.map((topic) =>
-      Article.find({ topic, publishedAt: { $gte: cutoff } })
-        .sort({ publishedAt: -1 })
-        .limit(15)
-        .select("title source topic summary snippet image url publishedAt")
-        .lean()
-    ));
-    const storiesByTopic = new Map(preferredTopics.map((topic, index) => [
+    const recentArticles = await Article.find({
+      topic: { $in: preferredTopics },
+      publishedAt: { $gte: cutoff },
+    })
+      .sort({ publishedAt: -1 })
+      .select("title source topic summary snippet image url publishedAt")
+      .lean();
+    const articleGroups = new Map<string, typeof recentArticles>();
+    for (const article of recentArticles) {
+      const group = articleGroups.get(article.topic);
+      if (group) {
+        if (group.length < 15) group.push(article);
+      } else {
+        articleGroups.set(article.topic, [article]);
+      }
+    }
+    const storiesByTopic = new Map(preferredTopics.map((topic) => [
       topic,
-      rankArticlesByPreference(articleGroups[index], interests),
+      rankArticlesByPreference(articleGroups.get(topic) || [], interests),
     ]));
     // Show only the top ranked article from each preferred topic. Since
     // preferredTopics is sorted by interest, categories also appear in order
@@ -53,6 +67,18 @@ export async function GET() {
       const topStory = storiesByTopic.get(topic)?.[0];
       return topStory ? [topStory] : [];
     });
+
+    const storyIds = stories.map((article) => article._id);
+    const savedFeedback = await Event.find({
+      userId,
+      articleId: { $in: storyIds },
+      editionId: { $exists: false },
+      origin: { $ne: "onboarding" },
+      type: { $in: ["like", "skip"] },
+    })
+      .select("articleId type")
+      .lean();
+    const feedbackByArticle = new Map(savedFeedback.map((event) => [String(event.articleId), event.type]));
 
     return NextResponse.json({
       stories: stories.map((article) => ({
@@ -64,6 +90,7 @@ export async function GET() {
         image: article.image || "",
         url: article.url,
         publishedAt: article.publishedAt,
+        feedback: feedbackByArticle.get(article._id.toString()) || null,
       })),
     }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

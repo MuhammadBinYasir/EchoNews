@@ -1,5 +1,6 @@
+import { after } from "next/server";
 import { connectDB } from "@/lib/mongo";
-import { User, Article, Edition, TOPICS } from "@/model";
+import { User, Article, Edition, Event, TOPICS } from "@/model";
 import { generateWithGemini } from "@/lib/gemini";
 import { getTopicPriorities, rankArticlesByPreference } from "@/lib/recommendation";
 import { formatTimeAgo, formatTopicName, extractInterestsMap } from "@/lib/format";
@@ -83,6 +84,23 @@ async function enrichEditorialContent(articles: ArticleForAi[], includeDigest: b
   return { summaries, threeThings };
 }
 
+function scheduleSummaryEnrichment(articles: ArticleForAi[]) {
+  if (!articles.length || articles.every((article) => Boolean(article.summary?.trim()))) return;
+  after(() => {
+    void enrichEditorialContent(articles, false);
+  });
+}
+
+function layoutArticles(layout: {
+  lead?: ArticleForAi | null;
+  secondary?: ArticleForAi[];
+  briefs?: ArticleForAi[];
+  echo?: ArticleForAi[];
+}) {
+  return [layout.lead, ...(layout.secondary || []), ...(layout.briefs || []), ...(layout.echo || [])]
+    .filter((article): article is ArticleForAi => Boolean(article));
+}
+
 export async function getOrCreateTodayEdition(userId: string, forceRegenerate = false) {
   await connectDB();
 
@@ -107,18 +125,14 @@ export async function getOrCreateTodayEdition(userId: string, forceRegenerate = 
         briefs?: ArticleForAi[];
         echo?: ArticleForAi[];
       };
-      await enrichEditorialContent(
-        [layout.lead, ...(layout.secondary || []), ...(layout.briefs || []), ...(layout.echo || [])]
-          .filter((article): article is ArticleForAi => Boolean(article)),
-        false
-      );
+      scheduleSummaryEnrichment(layoutArticles(layout));
       return { user, edition: existing };
     }
   }
 
   const previousEdition = await Edition.findOne({ userId: user._id, date: { $lte: todayStr } })
     .sort({ date: -1 })
-    .select("recentArticleIds layout")
+    .select("recentArticleIds layout interestSnapshot createdAt")
     .lean();
   const idFrom = (value: unknown) => {
     if (!value) return "";
@@ -141,6 +155,54 @@ export async function getOrCreateTodayEdition(userId: string, forceRegenerate = 
   ].map(idFrom).filter(Boolean))).slice(-300);
 
   const interestsMap = extractInterestsMap(user.interests);
+  const previousInterests = extractInterestsMap(previousEdition?.interestSnapshot);
+  // A legacy edition has no saved snapshot, so avoid claiming a change that
+  // cannot be measured accurately. Its first regenerated edition establishes
+  // the comparison baseline for later regenerations.
+  const interestBaseline = Object.keys(previousInterests).length ? previousInterests : interestsMap;
+  const feedbackEvents = previousEdition
+    ? await Event.find({
+        userId: user._id,
+        origin: "feedback",
+        ts: { $gt: previousEdition.createdAt || new Date(0) },
+        type: { $in: ["like", "skip"] },
+      })
+        .sort({ ts: -1 })
+        .populate("articleId", "title topic")
+        .lean()
+    : [];
+  const changes = Object.entries(interestsMap)
+    .map(([topic, weight]) => {
+      const delta = Math.round((weight - (interestBaseline[topic] ?? weight)) * 100);
+      return {
+        topic,
+        delta,
+        likes: feedbackEvents.filter((event) => event.topic === topic && event.type === "like").length,
+        skips: feedbackEvents.filter((event) => event.topic === topic && event.type === "skip").length,
+      };
+    })
+    .filter((change) => Math.abs(change.delta) >= 1)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, 3);
+  const explanationParts = changes.flatMap((change) => {
+    const topicName = formatTopicName(change.topic);
+    if (change.delta > 0 && change.likes > 0) {
+      return [`You liked ${change.likes} ${topicName} ${change.likes === 1 ? "story" : "stories"}, so ${topicName} moved up ${change.delta}%.`];
+    }
+    if (change.delta < 0 && change.skips > 0) {
+      return [`You skipped ${change.skips} ${topicName} ${change.skips === 1 ? "story" : "stories"}, so ${topicName} moved down ${Math.abs(change.delta)}%.`];
+    }
+    return [`${topicName} moved ${change.delta > 0 ? "up" : "down"} ${Math.abs(change.delta)}% based on your recent reading.`];
+  });
+  const explanation = explanationParts.length
+    ? explanationParts.join(" ")
+    : "Your interest mix stayed steady, so this edition keeps the balance you chose.";
+  const likedTitleByTopic = new Map<string, string>();
+  for (const event of feedbackEvents) {
+    if (event.type !== "like" || likedTitleByTopic.has(event.topic)) continue;
+    const article = event.articleId as unknown as { title?: string; topic?: string } | null;
+    if (article?.title) likedTitleByTopic.set(event.topic, article.title);
+  }
   const priorities = getTopicPriorities(TOPICS, interestsMap);
   const topTopics = priorities.primary;
   const bottomTopics = priorities.discovery;
@@ -198,7 +260,7 @@ export async function getOrCreateTodayEdition(userId: string, forceRegenerate = 
     echoCandidates = [...echoCandidates, ...fallback.filter((article) => !known.has(article._id.toString()))];
   }
 
-  if (mainCandidates.length === 0) return null;
+  if (mainCandidates.length === 0) return { user, edition: null };
 
   const rankedMainCandidates = rankArticlesByPreference(mainCandidates, interestsMap);
   const rankedEchoCandidates = rankArticlesByPreference(echoCandidates, interestsMap);
@@ -293,6 +355,20 @@ export async function getOrCreateTodayEdition(userId: string, forceRegenerate = 
 
   // 5. Summarize the selected stories and build the digest in one grounded AI call.
   const selectedArticles = [leadArticle, ...secondary, ...briefs, ...echo];
+  const discoveryArticleIds = new Set(echo.map((article) => article._id.toString()));
+  const storyReasons = Object.fromEntries(selectedArticles.map((article) => {
+    const likedTitle = likedTitleByTopic.get(article.topic);
+    const change = changes.find((item) => item.topic === article.topic);
+    const isDiscovery = discoveryArticleIds.has(article._id.toString());
+    const reason = likedTitle && likedTitle !== article.title
+      ? `Because you liked “${likedTitle}”`
+      : isDiscovery
+        ? `A fresh perspective from ${formatTopicName(article.topic)}`
+        : change?.delta && change.delta > 0
+          ? `Because your interest in ${formatTopicName(article.topic)} moved up ${change.delta}%`
+        : `A fresh ${formatTopicName(article.topic)} story selected for you`;
+    return [article._id.toString(), reason];
+  }));
   const aiContent = await enrichEditorialContent(selectedArticles, true);
   const summaryFor = (article: (typeof selectedArticles)[number]) =>
     article.summary || aiContent.summaries.get(article._id.toString()) || article.snippet || article.sourceText || "";
@@ -331,6 +407,8 @@ export async function getOrCreateTodayEdition(userId: string, forceRegenerate = 
         echo: echo.map((e) => e._id),
       },
       threeThings,
+      interestSnapshot: interestsMap,
+      personalization: { changes, explanation, storyReasons },
       createdAt: new Date(),
     },
     { upsert: true, new: true }
@@ -359,21 +437,38 @@ export async function getEditionByDate(userId: string, date: string) {
     briefs?: ArticleForAi[];
     echo?: ArticleForAi[];
   };
-  await enrichEditorialContent(
-    [layout.lead, ...(layout.secondary || []), ...(layout.briefs || []), ...(layout.echo || [])]
-      .filter((article): article is ArticleForAi => Boolean(article)),
-    false
-  );
+  scheduleSummaryEnrichment(layoutArticles(layout));
   const user = await User.findById(userId).lean();
   if (!user) return null;
   return { user, edition };
+}
+
+export async function getEditionFeedback(userId: string, editionId: string) {
+  await connectDB();
+  const events = await Event.find({
+    userId,
+    editionId,
+    origin: { $ne: "onboarding" },
+    type: { $in: ["like", "skip"] },
+  })
+    .select("articleId type")
+    .lean();
+  const likedArticles: Record<string, boolean> = {};
+  const skippedArticles: Record<string, boolean> = {};
+  for (const event of events) {
+    const articleId = String(event.articleId);
+    if (event.type === "like") likedArticles[articleId] = true;
+    if (event.type === "skip") skippedArticles[articleId] = true;
+  }
+  return { likedArticles, skippedArticles };
 }
 
 export async function listEditions(userId: string) {
   await connectDB();
   const editions = await Edition.find({ userId })
     .sort({ date: -1 })
-    .populate('layout.lead')
+    .select("date number layout.lead")
+    .populate("layout.lead", "title image")
     .lean();
   return editions.map((ed) => {
     const lead = ed.layout?.lead as unknown as { title?: string; image?: string } | null;

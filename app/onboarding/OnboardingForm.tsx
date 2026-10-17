@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
@@ -754,7 +754,6 @@ const OnboardingPage = () => {
 
                       {/* Article Image */}
                       <div className="relative w-full aspect-16/9 bg-[#e8e2d5] overflow-hidden">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         {currentArticle.image && (
                           <img
                             src={currentArticle.image}

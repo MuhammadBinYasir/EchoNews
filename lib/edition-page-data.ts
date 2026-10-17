@@ -23,7 +23,14 @@ export function formatEditionDate(date: string) {
   });
 }
 
-export function toEditionPageData(user: DataRecord, edition: DataRecord) {
+export function toEditionPageData(
+  user: DataRecord,
+  edition: DataRecord,
+  feedback: { likedArticles: Record<string, boolean>; skippedArticles: Record<string, boolean> } = {
+    likedArticles: {},
+    skippedArticles: {},
+  },
+) {
   const userId = user._id;
   const userName = typeof user.name === "string" ? user.name : "Reader";
   const editionId = edition._id;
@@ -65,6 +72,33 @@ export function toEditionPageData(user: DataRecord, edition: DataRecord) {
       date: formatEditionDate(editionDate),
       number: typeof edition.number === "number" ? edition.number : 1,
       threeThings: Array.isArray(edition.threeThings) ? edition.threeThings.filter((item): item is string => typeof item === "string") : [],
+      personalization: (() => {
+        const raw = edition.personalization as DataRecord | undefined;
+        if (!raw) return null;
+        const rawChanges = Array.isArray(raw.changes) ? raw.changes : [];
+        const changes = rawChanges.flatMap((item) => {
+          if (!item || typeof item !== "object") return [];
+          const change = item as DataRecord;
+          if (typeof change.topic !== "string" || typeof change.delta !== "number") return [];
+          return [{
+            topic: change.topic,
+            displayName: formatTopicName(change.topic),
+            delta: change.delta,
+            likes: typeof change.likes === "number" ? change.likes : 0,
+            skips: typeof change.skips === "number" ? change.skips : 0,
+          }];
+        });
+        const rawReasons = raw.storyReasons;
+        const storyReasons = rawReasons instanceof Map
+          ? Object.fromEntries(rawReasons)
+          : rawReasons && typeof rawReasons === "object" ? rawReasons as Record<string, string> : {};
+        return {
+          changes,
+          explanation: typeof raw.explanation === "string" ? raw.explanation : "",
+          storyReasons,
+        };
+      })(),
+      feedback,
       layout: {
         lead: formatArticle(layout.lead),
         secondary: formatArticles(layout.secondary),

@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { notFound, redirect } from "next/navigation";
-import { getEditionByDate } from "@/lib/edition";
+import { getEditionByDate, getEditionFeedback } from "@/lib/edition";
 import { toEditionPageData } from "@/lib/edition-page-data";
 import EditionClientView from "@/app/EditionClientView";
 import { getReaderIdCandidates } from "@/lib/reader-cookies";
@@ -22,7 +22,8 @@ export default async function ArchivedEditionPage({ params }: PageProps<"/editio
   for (const userId of userIds) {
     const result = await getEditionByDate(userId, date);
     if (result) {
-      const { user, edition } = toEditionPageData(result.user, result.edition);
+      const feedback = await getEditionFeedback(userId, String(result.edition._id));
+      const { user, edition } = toEditionPageData(result.user, result.edition, feedback);
       return <EditionClientView user={user} edition={{ ...edition, isArchived: true }} />;
     }
   }

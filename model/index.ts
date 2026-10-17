@@ -73,6 +73,17 @@ const EditionSchema = new Schema(
         },
         recentArticleIds: { type: [{ type: Schema.Types.ObjectId, ref: "Article" }], default: [] },
         threeThings: { type: [String], default: [] },
+        interestSnapshot: { type: Map, of: Number, default: {} },
+        personalization: {
+            changes: [{
+                topic: { type: String, enum: TOPICS, required: true },
+                delta: { type: Number, required: true },
+                likes: { type: Number, default: 0 },
+                skips: { type: Number, default: 0 },
+            }],
+            explanation: { type: String, default: "" },
+            storyReasons: { type: Map, of: String, default: {} },
+        },
         createdAt: { type: Date, default: Date.now },
     },
     { versionKey: false }
@@ -97,6 +108,8 @@ const EventSchema = new Schema(
     { versionKey: false }
 );
 EventSchema.index({ userId: 1, ts: -1 });
+EventSchema.index({ userId: 1, editionId: 1, articleId: 1, type: 1 });
+EventSchema.index({ userId: 1, articleId: 1, type: 1, origin: 1 });
 
 /* ------------------------------------------------------------------ */
 /* LlmCache  (never pay twice for the same prompt)                     */
